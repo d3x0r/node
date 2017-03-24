@@ -1051,12 +1051,6 @@ MaybeHandle<Object> JSProxy::GetProperty(Isolate* isolate,
                                          Handle<Object> receiver,
                                          bool* was_found) {
   *was_found = true;
-  if (receiver->IsJSGlobalObject()) {
-    THROW_NEW_ERROR(
-        isolate,
-        NewTypeError(MessageTemplate::kReadGlobalReferenceThroughProxy, name),
-        Object);
-  }
 
   DCHECK(!name->IsPrivate());
   STACK_CHECK(isolate, MaybeHandle<Object>());
@@ -13458,9 +13452,13 @@ Handle<Object> SharedFunctionInfo::GetSourceCodeHarmony() {
 bool SharedFunctionInfo::IsInlineable() {
   // Check that the function has a script associated with it.
   if (!script()->IsScript()) return false;
+  if (GetIsolate()->is_precise_binary_code_coverage() &&
+      !has_reported_binary_coverage()) {
+    // We may miss invocations if this function is inlined.
+    return false;
+  }
   return !optimization_disabled();
 }
-
 
 int SharedFunctionInfo::SourceSize() {
   return end_position() - start_position();

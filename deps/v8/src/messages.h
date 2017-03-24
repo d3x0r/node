@@ -450,7 +450,6 @@ class ErrorUtils : public AllStatic {
   T(ProxyTrapReturnedFalsish, "'%' on proxy: trap returned falsish")           \
   T(ProxyTrapReturnedFalsishFor,                                               \
     "'%' on proxy: trap returned falsish for property '%'")                    \
-  T(ReadGlobalReferenceThroughProxy, "Trying to access '%' through proxy")     \
   T(RedefineDisallowed, "Cannot redefine property: %")                         \
   T(RedefineExternalArray,                                                     \
     "Cannot redefine a property of an object with external array elements")    \
@@ -465,6 +464,11 @@ class ErrorUtils : public AllStatic {
     "'caller' and 'arguments' are restricted function properties and cannot "  \
     "be accessed in this context.")                                            \
   T(ReturnMethodNotCallable, "The iterator's 'return' method is not callable") \
+  T(SharedArrayBufferTooShort,                                                 \
+    "Derived SharedArrayBuffer constructor created a buffer which was too "    \
+    "small")                                                                   \
+  T(SharedArrayBufferSpeciesThis,                                              \
+    "SharedArrayBuffer subclass returned this from species constructor")       \
   T(StaticPrototype, "Classes may not have static property named prototype")   \
   T(StrictCannotAssign, "Cannot assign to read only '%' in strict mode")       \
   T(StrictDeleteProperty, "Cannot delete property '%' of %")                   \

@@ -73,6 +73,12 @@ inline T ExchangeSeqCst(T* p, T value) {
 #define InterlockedExchangeAdd16 _InterlockedExchangeAdd16
 #define InterlockedCompareExchange8 _InterlockedCompareExchange8
 #define InterlockedExchangeAdd8 _InterlockedExchangeAdd8
+#define InterlockedExchange16 _InterlockedExchange16
+#define InterlockedExchange8 _InterlockedExchange8
+#define InterlockedAnd8 _InterlockedAnd8
+#define InterlockedOr8 _InterlockedOr8
+#define InterlockedXor8 _InterlockedXor8
+#define InterlockedXor16 _InterlockedXor16
 
 #define ATOMIC_OPS(type, suffix, vctype)                                    \
   inline type AddSeqCst(type* p, type value) {                              \
@@ -349,7 +355,7 @@ RUNTIME_FUNCTION(Runtime_ThrowInvalidAtomicAccessIndexError) {
 
 RUNTIME_FUNCTION(Runtime_AtomicsCompareExchange) {
   HandleScope scope(isolate);
-  DCHECK(args.length() == 4);
+  DCHECK_EQ(4, args.length());
   CONVERT_ARG_HANDLE_CHECKED(JSTypedArray, sta, 0);
   CONVERT_SIZE_ARG_CHECKED(index, 1);
   CONVERT_NUMBER_ARG_HANDLE_CHECKED(oldobj, 2);
@@ -383,7 +389,7 @@ RUNTIME_FUNCTION(Runtime_AtomicsCompareExchange) {
 
 RUNTIME_FUNCTION(Runtime_AtomicsAdd) {
   HandleScope scope(isolate);
-  DCHECK(args.length() == 3);
+  DCHECK_EQ(3, args.length());
   CONVERT_ARG_HANDLE_CHECKED(JSTypedArray, sta, 0);
   CONVERT_SIZE_ARG_CHECKED(index, 1);
   CONVERT_NUMBER_ARG_HANDLE_CHECKED(value, 2);
@@ -415,7 +421,7 @@ RUNTIME_FUNCTION(Runtime_AtomicsAdd) {
 
 RUNTIME_FUNCTION(Runtime_AtomicsSub) {
   HandleScope scope(isolate);
-  DCHECK(args.length() == 3);
+  DCHECK_EQ(3, args.length());
   CONVERT_ARG_HANDLE_CHECKED(JSTypedArray, sta, 0);
   CONVERT_SIZE_ARG_CHECKED(index, 1);
   CONVERT_NUMBER_ARG_HANDLE_CHECKED(value, 2);
@@ -447,7 +453,7 @@ RUNTIME_FUNCTION(Runtime_AtomicsSub) {
 
 RUNTIME_FUNCTION(Runtime_AtomicsAnd) {
   HandleScope scope(isolate);
-  DCHECK(args.length() == 3);
+  DCHECK_EQ(3, args.length());
   CONVERT_ARG_HANDLE_CHECKED(JSTypedArray, sta, 0);
   CONVERT_SIZE_ARG_CHECKED(index, 1);
   CONVERT_NUMBER_ARG_HANDLE_CHECKED(value, 2);
@@ -479,7 +485,7 @@ RUNTIME_FUNCTION(Runtime_AtomicsAnd) {
 
 RUNTIME_FUNCTION(Runtime_AtomicsOr) {
   HandleScope scope(isolate);
-  DCHECK(args.length() == 3);
+  DCHECK_EQ(3, args.length());
   CONVERT_ARG_HANDLE_CHECKED(JSTypedArray, sta, 0);
   CONVERT_SIZE_ARG_CHECKED(index, 1);
   CONVERT_NUMBER_ARG_HANDLE_CHECKED(value, 2);
@@ -511,7 +517,7 @@ RUNTIME_FUNCTION(Runtime_AtomicsOr) {
 
 RUNTIME_FUNCTION(Runtime_AtomicsXor) {
   HandleScope scope(isolate);
-  DCHECK(args.length() == 3);
+  DCHECK_EQ(3, args.length());
   CONVERT_ARG_HANDLE_CHECKED(JSTypedArray, sta, 0);
   CONVERT_SIZE_ARG_CHECKED(index, 1);
   CONVERT_NUMBER_ARG_HANDLE_CHECKED(value, 2);
@@ -543,7 +549,7 @@ RUNTIME_FUNCTION(Runtime_AtomicsXor) {
 
 RUNTIME_FUNCTION(Runtime_AtomicsExchange) {
   HandleScope scope(isolate);
-  DCHECK(args.length() == 3);
+  DCHECK_EQ(3, args.length());
   CONVERT_ARG_HANDLE_CHECKED(JSTypedArray, sta, 0);
   CONVERT_SIZE_ARG_CHECKED(index, 1);
   CONVERT_NUMBER_ARG_HANDLE_CHECKED(value, 2);
@@ -575,7 +581,7 @@ RUNTIME_FUNCTION(Runtime_AtomicsExchange) {
 
 RUNTIME_FUNCTION(Runtime_AtomicsIsLockFree) {
   HandleScope scope(isolate);
-  DCHECK(args.length() == 1);
+  DCHECK_EQ(1, args.length());
   CONVERT_NUMBER_ARG_HANDLE_CHECKED(size, 0);
   uint32_t usize = NumberToUint32(*size);
   return isolate->heap()->ToBoolean(AtomicIsLockFree(usize));

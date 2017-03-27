@@ -1,14 +1,45 @@
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 #include "node.h"
 
 #ifdef _WIN32
-#include <VersionHelpers.h>
+//#include <VersionHelpers.h>
 #include <WinError.h>
 
+inline bool 
+IsWindowsVersionOrGreater( WORD wMajorVersion, WORD wMinorVersion, WORD wServicePackMajor )
+{	OSVERSIONINFOEXW osvi = { sizeof( osvi ), 0, 0, 0, 0,{ 0 }, 0, 0 };	DWORDLONG        const dwlConditionMask = VerSetConditionMask(		VerSetConditionMask(			VerSetConditionMask(				0, VER_MAJORVERSION, VER_GREATER_EQUAL ),			VER_MINORVERSION, VER_GREATER_EQUAL ),		VER_SERVICEPACKMAJOR, VER_GREATER_EQUAL );	osvi.dwMajorVersion = wMajorVersion;	osvi.dwMinorVersion = wMinorVersion;	osvi.wServicePackMajor = wServicePackMajor;
+	return VerifyVersionInfoW( &osvi, VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR, dwlConditionMask ) != FALSE;
+}
+
+
 int wmain(int argc, wchar_t *wargv[]) {
-  if (!IsWindows7OrGreater()) {
+	if( (!IsWindowsVersionOrGreater( HIBYTE( _WIN32_WINNT_WINXP ), LOBYTE( _WIN32_WINNT_WINXP ), 3 )) ) {
+
+	}
+  if (!IsWindowsVersionOrGreater( HIBYTE( _WIN32_WINNT_WIN7 ), LOBYTE( _WIN32_WINNT_WIN7 ), 0 ) ) {
     fprintf(stderr, "This application is only supported on Windows 7, "
                     "Windows Server 2008 R2, or higher.");
-    exit(ERROR_EXE_MACHINE_TYPE_MISMATCH);
+   // exit(ERROR_EXE_MACHINE_TYPE_MISMATCH);
   }
 
   // Convert argv to to UTF8

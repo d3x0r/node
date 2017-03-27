@@ -22,14 +22,24 @@
 #include "node.h"
 
 #ifdef _WIN32
-#include <VersionHelpers.h>
+//#include <VersionHelpers.h>
 #include <WinError.h>
 
+inline bool 
+IsWindowsVersionOrGreater( WORD wMajorVersion, WORD wMinorVersion, WORD wServicePackMajor )
+{	OSVERSIONINFOEXW osvi = { sizeof( osvi ), 0, 0, 0, 0,{ 0 }, 0, 0 };	DWORDLONG        const dwlConditionMask = VerSetConditionMask(		VerSetConditionMask(			VerSetConditionMask(				0, VER_MAJORVERSION, VER_GREATER_EQUAL ),			VER_MINORVERSION, VER_GREATER_EQUAL ),		VER_SERVICEPACKMAJOR, VER_GREATER_EQUAL );	osvi.dwMajorVersion = wMajorVersion;	osvi.dwMinorVersion = wMinorVersion;	osvi.wServicePackMajor = wServicePackMajor;
+	return VerifyVersionInfoW( &osvi, VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR, dwlConditionMask ) != FALSE;
+}
+
+
 int wmain(int argc, wchar_t *wargv[]) {
-  if (!IsWindows7OrGreater()) {
+	if( (!IsWindowsVersionOrGreater( HIBYTE( _WIN32_WINNT_WINXP ), LOBYTE( _WIN32_WINNT_WINXP ), 3 )) ) {
+
+	}
+  if (!IsWindowsVersionOrGreater( HIBYTE( _WIN32_WINNT_WIN7 ), LOBYTE( _WIN32_WINNT_WIN7 ), 0 ) ) {
     fprintf(stderr, "This application is only supported on Windows 7, "
                     "Windows Server 2008 R2, or higher.");
-    exit(ERROR_EXE_MACHINE_TYPE_MISMATCH);
+   // exit(ERROR_EXE_MACHINE_TYPE_MISMATCH);
   }
 
   // Convert argv to to UTF8

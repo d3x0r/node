@@ -131,12 +131,6 @@ enum FreeListCategoryType {
 
 enum FreeMode { kLinkCategory, kDoNotLinkCategory };
 
-enum RememberedSetType {
-  OLD_TO_NEW,
-  OLD_TO_OLD,
-  NUMBER_OF_REMEMBERED_SET_TYPES = OLD_TO_OLD + 1
-};
-
 // A free list category maintains a linked list of free memory blocks.
 class FreeListCategory {
  public:
@@ -229,10 +223,6 @@ class FreeListCategory {
   friend class FreeList;
   friend class PagedSpace;
 };
-
-// MarkingMode determines which bitmaps and counters should be used when
-// accessing marking information on MemoryChunk.
-enum class MarkingMode { FULL, YOUNG_GENERATION };
 
 // MemoryChunk represents a memory region owned by a specific space.
 // It is divided into the header and the body. Chunk start is always
@@ -344,15 +334,17 @@ class MemoryChunk {
       + kPointerSize      // Heap* heap_
       + kIntptrSize       // intptr_t progress_bar_
       + kIntptrSize       // intptr_t live_byte_count_
-      + kPointerSize * NUMBER_OF_REMEMBERED_SET_TYPES  // SlotSet* array
-      + kPointerSize * NUMBER_OF_REMEMBERED_SET_TYPES  // TypedSlotSet* array
-      + kPointerSize                                   // SkipList* skip_list_
-      + kPointerSize    // AtomicValue high_water_mark_
-      + kPointerSize    // base::Mutex* mutex_
-      + kPointerSize    // base::AtomicWord concurrent_sweeping_
-      + 2 * kSizetSize  // AtomicNumber free-list statistics
-      + kPointerSize    // AtomicValue next_chunk_
-      + kPointerSize    // AtomicValue prev_chunk_
+      + kPointerSize      // SlotSet* old_to_new_slots_
+      + kPointerSize      // SlotSet* old_to_old_slots_
+      + kPointerSize      // TypedSlotSet* typed_old_to_new_slots_
+      + kPointerSize      // TypedSlotSet* typed_old_to_old_slots_
+      + kPointerSize      // SkipList* skip_list_
+      + kPointerSize      // AtomicValue high_water_mark_
+      + kPointerSize      // base::Mutex* mutex_
+      + kPointerSize      // base::AtomicWord concurrent_sweeping_
+      + 2 * kSizetSize    // AtomicNumber free-list statistics
+      + kPointerSize      // AtomicValue next_chunk_
+      + kPointerSize      // AtomicValue prev_chunk_
       + FreeListCategory::kSize * kNumberOfCategories
       // FreeListCategory categories_[kNumberOfCategories]
       + kPointerSize   // LocalArrayBufferTracker* local_tracker_
@@ -380,9 +372,6 @@ class MemoryChunk {
   static const intptr_t kPageAlignmentMask = (1 << kPageSizeBits) - 1;
 
   static const int kAllocatableMemory = kPageSize - kObjectStartOffset;
-
-  template <MarkingMode mode = MarkingMode::FULL>
-  static inline void IncrementLiveBytes(HeapObject* object, int by);
 
   // Only works if the pointer is in the first kPageSize of the MemoryChunk.
   static MemoryChunk* FromAddress(Address a) {
@@ -431,33 +420,6 @@ class MemoryChunk {
     return concurrent_sweeping_state().Value() == kSweepingDone;
   }
 
-  // Manage live byte count, i.e., count of bytes in black objects.
-  template <MarkingMode mode = MarkingMode::FULL>
-  inline void ResetLiveBytes();
-  template <MarkingMode mode = MarkingMode::FULL>
-  inline void IncrementLiveBytes(int by);
-
-  template <MarkingMode mode = MarkingMode::FULL>
-  int LiveBytes() {
-    switch (mode) {
-      case MarkingMode::FULL:
-        DCHECK_LE(static_cast<unsigned>(live_byte_count_), size_);
-        return static_cast<int>(live_byte_count_);
-      case MarkingMode::YOUNG_GENERATION:
-        DCHECK_LE(static_cast<unsigned>(young_generation_live_byte_count_),
-                  size_);
-        return static_cast<int>(young_generation_live_byte_count_);
-    }
-    UNREACHABLE();
-    return 0;
-  }
-
-  void SetLiveBytes(int live_bytes) {
-    DCHECK_GE(live_bytes, 0);
-    DCHECK_LE(static_cast<size_t>(live_bytes), size_);
-    live_byte_count_ = live_bytes;
-  }
-
   size_t size() const { return size_; }
   void set_size(size_t size) { size_ = size; }
 
@@ -467,26 +429,24 @@ class MemoryChunk {
 
   inline void set_skip_list(SkipList* skip_list) { skip_list_ = skip_list; }
 
-  template <RememberedSetType type>
-  SlotSet* slot_set() {
-    return slot_set_[type].Value();
+  inline SlotSet* old_to_new_slots() { return old_to_new_slots_.Value(); }
+  inline SlotSet* old_to_old_slots() { return old_to_old_slots_; }
+  inline TypedSlotSet* typed_old_to_new_slots() {
+    return typed_old_to_new_slots_.Value();
   }
-
-  template <RememberedSetType type>
-  TypedSlotSet* typed_slot_set() {
-    return typed_slot_set_[type].Value();
+  inline TypedSlotSet* typed_old_to_old_slots() {
+    return typed_old_to_old_slots_;
   }
-
   inline LocalArrayBufferTracker* local_tracker() { return local_tracker_; }
 
-  template <RememberedSetType type>
-  SlotSet* AllocateSlotSet();
-  template <RememberedSetType type>
-  void ReleaseSlotSet();
-  template <RememberedSetType type>
-  TypedSlotSet* AllocateTypedSlotSet();
-  template <RememberedSetType type>
-  void ReleaseTypedSlotSet();
+  V8_EXPORT_PRIVATE void AllocateOldToNewSlots();
+  void ReleaseOldToNewSlots();
+  V8_EXPORT_PRIVATE void AllocateOldToOldSlots();
+  void ReleaseOldToOldSlots();
+  void AllocateTypedOldToNewSlots();
+  void ReleaseTypedOldToNewSlots();
+  void AllocateTypedOldToOldSlots();
+  void ReleaseTypedOldToOldSlots();
   void AllocateLocalTracker();
   void ReleaseLocalTracker();
   void AllocateYoungGenerationBitmap();
@@ -519,19 +479,6 @@ class MemoryChunk {
     }
   }
 
-  template <MarkingMode mode = MarkingMode::FULL>
-  inline Bitmap* markbits() const {
-    return mode == MarkingMode::FULL
-               ? Bitmap::FromAddress(address() + kHeaderSize)
-               : young_generation_bitmap_;
-  }
-
-  template <MarkingMode mode = MarkingMode::FULL>
-  inline intptr_t* live_bytes_address() {
-    return mode == MarkingMode::FULL ? &live_byte_count_
-                                     : &young_generation_live_byte_count_;
-  }
-
   inline uint32_t AddressToMarkbitIndex(Address addr) const {
     return static_cast<uint32_t>(addr - this->address()) >> kPointerSizeLog2;
   }
@@ -539,11 +486,6 @@ class MemoryChunk {
   inline Address MarkbitIndexToAddress(uint32_t index) const {
     return this->address() + (index << kPointerSizeLog2);
   }
-
-  template <MarkingMode mode = MarkingMode::FULL>
-  void ClearLiveness();
-
-  void PrintMarkbits() { markbits()->Print(); }
 
   void SetFlag(Flag flag) { flags_ |= flag; }
   void ClearFlag(Flag flag) { flags_ &= ~Flags(flag); }
@@ -628,9 +570,6 @@ class MemoryChunk {
 
   base::VirtualMemory* reserved_memory() { return &reservation_; }
 
-  template <MarkingMode mode = MarkingMode::FULL>
-  inline void TraceLiveBytes(intptr_t old_value, intptr_t new_value);
-
   size_t size_;
   Flags flags_;
 
@@ -658,9 +597,10 @@ class MemoryChunk {
   // A single slot set for small pages (of size kPageSize) or an array of slot
   // set for large pages. In the latter case the number of entries in the array
   // is ceil(size() / kPageSize).
-  base::AtomicValue<SlotSet*> slot_set_[NUMBER_OF_REMEMBERED_SET_TYPES];
-  base::AtomicValue<TypedSlotSet*>
-      typed_slot_set_[NUMBER_OF_REMEMBERED_SET_TYPES];
+  base::AtomicValue<SlotSet*> old_to_new_slots_;
+  SlotSet* old_to_old_slots_;
+  base::AtomicValue<TypedSlotSet*> typed_old_to_new_slots_;
+  TypedSlotSet* typed_old_to_old_slots_;
 
   SkipList* skip_list_;
 
@@ -691,6 +631,7 @@ class MemoryChunk {
  private:
   void InitializeReservedMemory() { reservation_.Reset(); }
 
+  friend class MarkingState;
   friend class MemoryAllocator;
   friend class MemoryChunkValidator;
 };
@@ -699,6 +640,50 @@ DEFINE_OPERATORS_FOR_FLAGS(MemoryChunk::Flags)
 
 static_assert(kMaxRegularHeapObjectSize <= MemoryChunk::kAllocatableMemory,
               "kMaxRegularHeapObjectSize <= MemoryChunk::kAllocatableMemory");
+
+class MarkingState {
+ public:
+  static MarkingState External(HeapObject* object) {
+    return External(MemoryChunk::FromAddress(object->address()));
+  }
+
+  static MarkingState External(MemoryChunk* chunk) {
+    return MarkingState(chunk->young_generation_bitmap_,
+                        &chunk->young_generation_live_byte_count_);
+  }
+
+  static MarkingState Internal(HeapObject* object) {
+    return Internal(MemoryChunk::FromAddress(object->address()));
+  }
+
+  static MarkingState Internal(MemoryChunk* chunk) {
+    return MarkingState(
+        Bitmap::FromAddress(chunk->address() + MemoryChunk::kHeaderSize),
+        &chunk->live_byte_count_);
+  }
+
+  MarkingState(Bitmap* bitmap, intptr_t* live_bytes)
+      : bitmap_(bitmap), live_bytes_(live_bytes) {}
+
+  void IncrementLiveBytes(intptr_t by) const {
+    *live_bytes_ += static_cast<int>(by);
+  }
+  void SetLiveBytes(intptr_t value) const {
+    *live_bytes_ = static_cast<int>(value);
+  }
+
+  void ClearLiveness() const {
+    bitmap_->Clear();
+    *live_bytes_ = 0;
+  }
+
+  Bitmap* bitmap() const { return bitmap_; }
+  intptr_t live_bytes() const { return *live_bytes_; }
+
+ private:
+  Bitmap* bitmap_;
+  intptr_t* live_bytes_;
+};
 
 // -----------------------------------------------------------------------------
 // A page is a memory chunk of a size 1MB. Large object pages may be larger.

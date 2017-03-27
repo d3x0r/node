@@ -74,7 +74,8 @@ inline T ExchangeSeqCst(T* p, T value) {
 #define InterlockedCompareExchange8 _InterlockedCompareExchange8
 #define InterlockedExchangeAdd8 _InterlockedExchangeAdd8
 #define InterlockedExchange16 _InterlockedExchange16
-#define InterlockedExchange8 _InterlockedExchange8#define InterlockedAnd8 _InterlockedAnd8
+#define InterlockedExchange8 _InterlockedExchange8
+#define InterlockedAnd8 _InterlockedAnd8
 #define InterlockedOr8 _InterlockedOr8
 #define InterlockedXor8 _InterlockedXor8
 #define InterlockedXor16 _InterlockedXor16

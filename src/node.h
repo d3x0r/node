@@ -600,7 +600,7 @@ class InternalCallbackScope;
  * This object should be stack-allocated to ensure that it is contained in a
  * valid HandleScope.
  */
-class NODE_EXTERN CallbackScope {
+class CallbackScope {
  public:
   CallbackScope(v8::Isolate* isolate,
                 v8::Local<v8::Object> resource,

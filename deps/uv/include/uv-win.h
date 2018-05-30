@@ -306,6 +306,7 @@ typedef struct uv__dirent_s {
 typedef struct {
   HMODULE handle;
   char* errmsg;
+  char *filename;
 } uv_lib_t;
 
 RB_HEAD(uv_timer_tree_s, uv_timer_s);

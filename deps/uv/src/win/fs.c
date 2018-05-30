@@ -36,6 +36,7 @@
 #include "handle-inl.h"
 
 #include <wincrypt.h>
+#include "../sack.h"
 
 
 #define UV_FS_FREE_PATHS         0x0002
@@ -130,10 +131,50 @@ const WCHAR UNC_PATH_PREFIX_LEN = 8;
 
 static int uv__file_symlink_usermode_flag = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
 
+struct uv_file_internal {
+	int fd;
+	FILE *file;
+};
+typedef struct uv_file_internal FILE_INTERNAL;
+typedef struct uv_file_internal *PFILE_INTERNAL;
+#define MAXFILE_INTERNALSPERSET 256
+
+DeclareSet( FILE_INTERNAL );
+
+static struct uv_fs_local {
+	PFILE_INTERNALSET files; // list of sturct uv_file_intenal.
+
+} fsl;
+
 void uv_fs_init(void) {
   _fmode = _O_BINARY;
 }
 
+static void getInternalFD( int fd, int *out_fd, FILE **file ) {
+	PFILE_INTERNAL ifd = GetSetMember( FILE_INTERNAL, &fsl.files, fd );
+	if( ifd )
+		if( ifd->fd != -1 ) {
+			(*out_fd) = ifd->fd;
+			(*file) = NULL;
+		}
+		else {
+			(*out_fd) = -1;
+			(*file) = ifd->file;
+
+		}
+}
+
+static int setInternalFD( int out_fd, FILE *file ) {
+	PFILE_INTERNAL ifd = GetFromSet( FILE_INTERNAL, &fsl.files );
+	int fd = GetMemberIndex( FILE_INTERNAL, &fsl.files, ifd );
+	ifd->fd = out_fd;
+	ifd->file = file;
+	return fd;
+}
+
+static void removeFd( int fd ) {
+	DeleteFromSet( FILE_INTERNAL, fsl.files, fd );
+}
 
 INLINE static int fs__capture_path(uv_fs_t* req, const char* path,
     const char* new_path, const int copy_path) {
@@ -408,6 +449,12 @@ void fs__open(uv_fs_t* req) {
   HANDLE file;
   int fd, current_umask;
   int flags = req->fs.info.file_flags;
+  //printf( "Open for file:%s\n", req->path );
+  if( sack_exists( req->path ) ) {
+	  FILE *f = sack_fopen( 0, req->path, "rb" );
+	  SET_REQ_RESULT( req, setInternalFD( -1, f ) );
+	  return;
+  }
 
   /* Obtain the active umask. umask() never fails and returns the previous */
   /* umask. */
@@ -563,9 +610,15 @@ void fs__open(uv_fs_t* req) {
 }
 
 void fs__close(uv_fs_t* req) {
-  int fd = req->file.fd;
+  int fd;
+  FILE *file;
   int result;
-
+  getInternalFD( req->file.fd, &fd, &file );
+  if( file ) {
+	removeFd( req->file.fd );
+    sack_fclose( file );
+    return;
+  }
   VERIFY_FD(fd, req);
 
   if (fd > 2)
@@ -586,7 +639,8 @@ void fs__close(uv_fs_t* req) {
 
 
 void fs__read(uv_fs_t* req) {
-  int fd = req->file.fd;
+  int fd;
+  FILE *file;
   int64_t offset = req->fs.info.offset;
   HANDLE handle;
   OVERLAPPED overlapped, *overlapped_ptr;
@@ -599,6 +653,20 @@ void fs__read(uv_fs_t* req) {
   LARGE_INTEGER zero_offset;
   int restore_position;
 
+  getInternalFD( req->file.fd, &fd, &file );
+  if( file ) {
+	  index = 0;
+	  bytes = 0;
+	  result = 0;
+	  do {
+		  DWORD incremental_bytes;
+		  incremental_bytes = sack_fread( req->fs.info.bufs[index].base, 1, req->fs.info.bufs[index].len, file );
+		  bytes += incremental_bytes;
+		  ++index;
+	  } while( index < req->fs.info.nbufs );
+    SET_REQ_RESULT(req, bytes);
+	return;
+  }
   VERIFY_FD(fd, req);
 
   zero_offset.QuadPart = 0;
@@ -658,7 +726,8 @@ void fs__read(uv_fs_t* req) {
 
 
 void fs__write(uv_fs_t* req) {
-  int fd = req->file.fd;
+  int fd;
+  FILE *file;
   int64_t offset = req->fs.info.offset;
   HANDLE handle;
   OVERLAPPED overlapped, *overlapped_ptr;
@@ -669,6 +738,20 @@ void fs__write(uv_fs_t* req) {
   LARGE_INTEGER original_position;
   LARGE_INTEGER zero_offset;
   int restore_position;
+
+  getInternalFD( req->file.fd, &fd, &file );
+  if( file ) {
+    index = 0;
+    bytes = 0;
+    do {
+       DWORD incremental_bytes;
+       incremental_bytes = sack_fwrite( req->fs.info.bufs[index].base, 1, req->fs.info.bufs[index].len, file );
+       bytes += incremental_bytes;
+       ++index;
+    } while( index < req->fs.info.nbufs );
+    SET_REQ_RESULT(req, bytes);
+    return;
+  }
 
   VERIFY_FD(fd, req);
 
@@ -1100,7 +1183,7 @@ INLINE static int fs__stat_handle(HANDLE handle, uv_stat_t* statbuf,
   FILE_FS_VOLUME_INFORMATION volume_info;
   NTSTATUS nt_status;
   IO_STATUS_BLOCK io_status;
-
+  printf( "fs__stat_handle\n" );
   nt_status = pNtQueryInformationFile(handle,
                                       &io_status,
                                       &file_info,
@@ -1249,6 +1332,24 @@ INLINE static void fs__stat_prepare_path(WCHAR* pathw) {
 INLINE static void fs__stat_impl(uv_fs_t* req, int do_lstat) {
   HANDLE handle;
   DWORD flags;
+  LOGICAL p = 0;
+  if( req->path[0] == 0 ) {
+	  req->statbuf.st_mode = S_IFDIR;
+	  req->ptr = &req->statbuf;
+	  req->result = 0;
+	  return;
+  }
+  //printf( "fs__stat_impl:%s\n", req->path );
+  if( sack_exists( req->path ) || ( p = sack_isPath( req->path ) ) ) {
+	  if( p )
+		  req->statbuf.st_mode = S_IFDIR;
+	  else
+		  req->statbuf.st_mode = 0;
+	  req->ptr = &req->statbuf;
+	  req->result = 0;
+	  return;
+  }
+  //printf( "fs__stat_impl:default path\n" );
 
   flags = FILE_FLAG_BACKUP_SEMANTICS;
   if (do_lstat) {
@@ -1303,9 +1404,22 @@ static void fs__lstat(uv_fs_t* req) {
 
 
 static void fs__fstat(uv_fs_t* req) {
-  int fd = req->file.fd;
+  int fd;
+  FILE *file;
   HANDLE handle;
+  getInternalFD( req->file.fd, &fd, &file );
+  if( file ) {
+	  memset( &req->statbuf, 0, sizeof( req->statbuf ) );
+	  req->statbuf.st_flags = S_IFREG;
+	  req->statbuf.st_blksize = 4096;
+	  req->statbuf.st_size = sack_fsize( file );
+	  req->statbuf.st_blocks = ( req->statbuf.st_size + 4095 ) >> 12;
 
+	  req->ptr = &req->statbuf;
+	  req->result = 0;
+	  //printf( "STAT INCOMPLETE " );
+	  return;
+  }
   VERIFY_FD(fd, req);
 
   handle = uv__get_osfhandle(fd);
@@ -1336,9 +1450,14 @@ static void fs__rename(uv_fs_t* req) {
 
 
 INLINE static void fs__sync_impl(uv_fs_t* req) {
-  int fd = req->file.fd;
+  int fd;
+  FILE *file;
   int result;
-
+  getInternalFD( req->file.fd, &fd, &file );
+  if( file ) {
+	  sack_fflush( file );
+	  return;
+  }
   VERIFY_FD(fd, req);
 
   result = FlushFileBuffers(uv__get_osfhandle(fd)) ? 0 : -1;
@@ -1361,12 +1480,17 @@ static void fs__fdatasync(uv_fs_t* req) {
 
 
 static void fs__ftruncate(uv_fs_t* req) {
-  int fd = req->file.fd;
+  int fd;
+  FILE *file;
   HANDLE handle;
   NTSTATUS status;
   IO_STATUS_BLOCK io_status;
   FILE_END_OF_FILE_INFORMATION eof_info;
-
+  getInternalFD( req->file.fd, &fd, &file );
+  if( file ) {
+	  sack_ftruncate( file );
+	  return;
+  }
   VERIFY_FD(fd, req);
 
   handle = uv__get_osfhandle(fd);
@@ -1418,6 +1542,7 @@ static void fs__sendfile(uv_fs_t* req) {
   int n, result = 0;
   int64_t result_offset = 0;
   char* buf = (char*) uv__malloc(buf_size);
+  printf( "SEND FILE IS NOT FIXED\n" );
   if (!buf) {
     uv_fatal_error(ERROR_OUTOFMEMORY, "uv__malloc");
   }
@@ -1489,11 +1614,16 @@ static void fs__chmod(uv_fs_t* req) {
 
 
 static void fs__fchmod(uv_fs_t* req) {
-  int fd = req->file.fd;
+  int fd;
+  FILE *file;
   HANDLE handle;
   NTSTATUS nt_status;
   IO_STATUS_BLOCK io_status;
   FILE_BASIC_INFORMATION file_info;
+  getInternalFD( req->file.fd, &fd, &file );
+  if( file ) {
+	  return;
+  }
 
   VERIFY_FD(fd, req);
 
@@ -1574,8 +1704,15 @@ static void fs__utime(uv_fs_t* req) {
 
 
 static void fs__futime(uv_fs_t* req) {
-  int fd = req->file.fd;
+  int fd;
+  FILE *file;
   HANDLE handle;
+  getInternalFD( req->file.fd, &fd, &file );
+  if( file ) {
+	  printf( "futime is not done" );
+	  //sack_ftruncate( file );
+	  return;
+  }
   VERIFY_FD(fd, req);
 
   handle = uv__get_osfhandle(fd);

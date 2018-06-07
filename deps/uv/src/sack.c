@@ -11499,7 +11499,6 @@ static struct sack_vfs_file * CPROC sack_vfs_open( uintptr_t psvInstance, const 
 int CPROC sack_vfs_exists( struct volume *vol, const char * file ) {
 	struct directory_entry entkey;
 	struct directory_entry *ent;
-	printf( "exists:%s\n", file );
 	while( LockedExchange( &vol->lock, 1 ) ) Relinquish();
 	if( file[0] == '.' && file[1] == '/' ) file += 2;
 	ent = ScanDirectory( vol, file, &entkey, 0 );

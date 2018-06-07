@@ -151,17 +151,23 @@ void uv_fs_init(void) {
 }
 
 static void getInternalFD( int fd, int *out_fd, FILE **file ) {
-	PFILE_INTERNAL ifd = GetSetMember( FILE_INTERNAL, &fsl.files, fd );
-	if( ifd )
-		if( ifd->fd != -1 ) {
-			(*out_fd) = ifd->fd;
-			(*file) = NULL;
-		}
-		else {
-			(*out_fd) = -1;
-			(*file) = ifd->file;
+	if( fd >= 256 ) {
+		PFILE_INTERNAL ifd = GetSetMember( FILE_INTERNAL, &fsl.files, fd -256 );
+		if( ifd )
+			if( ifd->fd != -1 ) {
+				(*out_fd) = ifd->fd;
+				(*file) = NULL;
+			}
+			else {
+				(*out_fd) = -1;
+				(*file) = ifd->file;
 
-		}
+			}
+	}
+	else {
+		out_fd[0] = fd;
+		file[0] = NULL;
+	}
 }
 
 static int setInternalFD( int out_fd, FILE *file ) {
@@ -169,11 +175,13 @@ static int setInternalFD( int out_fd, FILE *file ) {
 	int fd = GetMemberIndex( FILE_INTERNAL, &fsl.files, ifd );
 	ifd->fd = out_fd;
 	ifd->file = file;
-	return fd;
+	return fd+256;
 }
 
 static void removeFd( int fd ) {
-	DeleteFromSet( FILE_INTERNAL, fsl.files, fd );
+	if( fd >= 256 )
+		DeleteFromSet( FILE_INTERNAL, fsl.files, fd-256 );
+
 }
 
 INLINE static int fs__capture_path(uv_fs_t* req, const char* path,
@@ -449,7 +457,6 @@ void fs__open(uv_fs_t* req) {
   HANDLE file;
   int fd, current_umask;
   int flags = req->fs.info.file_flags;
-  //printf( "Open for file:%s\n", req->path );
   if( sack_exists( req->path ) ) {
 	  FILE *f = sack_fopen( 0, req->path, "rb" );
 	  SET_REQ_RESULT( req, setInternalFD( -1, f ) );
@@ -1183,7 +1190,6 @@ INLINE static int fs__stat_handle(HANDLE handle, uv_stat_t* statbuf,
   FILE_FS_VOLUME_INFORMATION volume_info;
   NTSTATUS nt_status;
   IO_STATUS_BLOCK io_status;
-  printf( "fs__stat_handle\n" );
   nt_status = pNtQueryInformationFile(handle,
                                       &io_status,
                                       &file_info,
@@ -1339,8 +1345,8 @@ INLINE static void fs__stat_impl(uv_fs_t* req, int do_lstat) {
 	  req->result = 0;
 	  return;
   }
-  //printf( "fs__stat_impl:%s\n", req->path );
-  if( sack_exists( req->path ) || ( p = sack_isPath( req->path ) ) ) {
+  if( sack_exists( req->path ) ) {
+	  p = sack_isPath( req->path );
 	  if( p )
 		  req->statbuf.st_mode = S_IFDIR;
 	  else
@@ -1348,8 +1354,12 @@ INLINE static void fs__stat_impl(uv_fs_t* req, int do_lstat) {
 	  req->ptr = &req->statbuf;
 	  req->result = 0;
 	  return;
+  } if( (p = sack_isPath( req->path )) ) {
+	  req->statbuf.st_mode = S_IFDIR;
+	  req->ptr = &req->statbuf;
+	  req->result = 0;
+	  return;
   }
-  //printf( "fs__stat_impl:default path\n" );
 
   flags = FILE_FLAG_BACKUP_SEMANTICS;
   if (do_lstat) {
@@ -1417,7 +1427,6 @@ static void fs__fstat(uv_fs_t* req) {
 
 	  req->ptr = &req->statbuf;
 	  req->result = 0;
-	  //printf( "STAT INCOMPLETE " );
 	  return;
   }
   VERIFY_FD(fd, req);

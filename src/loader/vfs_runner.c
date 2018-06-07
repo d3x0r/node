@@ -131,100 +131,39 @@ static LOGICAL CPROC LoadLibraryDependant( CTEXTSTR name )
 	}
 	else
 		LoadFunction( name, NULL );
-    DeleteLink( &loading, del_string );
+	DeleteLink( &loading, del_string );
 
 	return FALSE;
 }
 
-static void CPROC InstallFinished( uintptr_t psv, PTASK_INFO task )
-{
-	((LOGICAL*)psv)[0] = TRUE;
-
-}
-
-PRIORITY_PRELOAD( LowestInit, 1 )
-{
-		SetProgramName( "program" );
-		sack_set_common_data_producer( "Karaway Entertainment" );
-}
-
 PRIORITY_PRELOAD( XSaneWinMain, DEFAULT_PRELOAD_PRIORITY + 20 )//( argc, argv )
 {
-	TEXTSTR cmd = GetCommandLine();
-	int argc;
-	char **argv;
-	//FixupMyTLS();
-	//MessageBox( NULL, "Pause", "Attach", MB_OK );
-	ParseIntoArgs( cmd, &argc, &argv );
-	//SetSystemLog( SYSLOG_FILE, stderr ); 
 #ifdef ALT_VFS_NAME
-		l.fsi = sack_get_filesystem_interface( "sack_shmem.runner" );
+	l.fsi = sack_get_filesystem_interface( "sack_shmem.runner" );
 #else
-		l.fsi = sack_get_filesystem_interface( "sack_shmem" );
+	l.fsi = sack_get_filesystem_interface( "sack_shmem" );
 #endif
-		//sack_set_default_filesystem_interface( l.fsi );
-		SetExternalLoadLibrary( LoadLibraryDependant );
-		SetProgramName( "node" );
-		sack_set_common_data_producer( "Karaway Entertainment" );
-		lprintf( "Open Core FS Log" );
+	//sack_set_default_filesystem_interface( l.fsi );
+	SetExternalLoadLibrary( LoadLibraryDependant );
+	//SetProgramName( "node" );
+	sack_set_common_data_producer( "Node.js" );
 
-//#define app_signature "FIX ME"
-#define _appload( a, b )  sack_vfs_load_crypt_volume( "application.dat",0,#a "-1.0." #b, app_signature )
-//#define _appload( a,b )  sack_vfs_load_crypt_volume( "application.dat", a, b )
-#define appload( a,b )  _appload( a,b )
-#define _appload1( a, b )  sack_vfs_load_crypt_volume( "application.dat",1,#a "-1.0." #b, app_signature )
-//#define _appload( a,b )  sack_vfs_load_crypt_volume( "application.dat", a, b )
-#define appload1( a,b )  _appload1( a,b )
-#define _appload2( a, b )  sack_vfs_load_crypt_volume( "application.dat",2,#a "-1.0." #b, app_signature )
-//#define _appload( a,b )  sack_vfs_load_crypt_volume( "application.dat", a, b )
-#define appload2( a,b )  _appload2( a,b )
+	lprintf( "Open Core FS Log" );
 
-#define _sfxappload( a, b )  sack_vfs_use_crypt_volume( memory, sz,0,#a "-1.0." #b, app_signature )
-#define sfxappload( a,b )  _sfxappload( a,b )
-
-#define _resload( a,b )  sack_vfs_load_crypt_volume( "resources.kw",0,#a, "1.0." #b )
-#define resload( a,b )  _resload( a,b )
+#ifdef _WIN32
+	if( !LoadLibrary( "application.node" ) ) {
+			
+	}
+#else
+	dlopen( "./application.node", 0 );
+#endif
 
 	{
-#ifdef STANDALONE_HEADER
-		size_t sz = 0;
-		POINTER memory;
-		{
-			uint32_t startTick = GetTickCount();
-			do {
-				memory = OpenSpace( NULL, argv[0], (uintptr_t*)&sz );
-				if( !memory ) {
-					lprintf( "Failed to open memory?" );
-					WakeableSleep( 250 );
-				}
-			} while( !memory && ( ( GetTickCount() - startTick ) < 5000 ) );
-		}
-		//POINTER vfs_memory;
-//		lprintf( "memory is %p(%d)\n", memory, sz );
-		if( memory == NULL )
-		{
-			MessageBox( NULL, "Please Launch with full path", "Startup Error", MB_OK );
-			exit(0);
-		}
-		//vfs_memory = GetExtraData( memory );
-//		lprintf( "extra is %d(%08x)\n", vfs_memory, vfs_memory );
-		l.rom_fs = sfxappload( CMAKE_BUILD_TYPE, CPACK_PACKAGE_VERSION_PATCH );
-		//l.rom_fs = appload( CMAKE_BUILD_TYPE, CPACK_PACKAGE_VERSION_PATCH );
-
-//#define l(a,b)		lprintf( "rom is %p %s %s", l.rom_fs, #a "-1.0." #b, app_signature )
-//		l( CMAKE_BUILD_TYPE, CMAKE_PACKAGE_VERSION_PATCH );
-		if( !l.rom_fs )
-			return;
-		if( StrCmp( sack_vfs_get_signature( l.rom_fs ), app_signature ) )
-			return;
-		//printf( "and... we get %p\n", l.rom_fs );
-#else
-		l.rom_fs = appload( CMAKE_BUILD_TYPE, CPACK_PACKAGE_VERSION_PATCH );
-		//printf( "loaded vol:%p\n", l.rom_fs );
+		l.rom_fs = sack_vfs_load_volume( "node.vfs",0 );
+		printf( "loaded vol:%p\n", l.rom_fs );
 		if( !l.rom_fs ) {
-			l.rom_fs = appload1( CMAKE_BUILD_TYPE, CPACK_PACKAGE_VERSION_PATCH );
+			//l.rom_fs = appload1( CMAKE_BUILD_TYPE, CPACK_PACKAGE_VERSION_PATCH );
 		}
-#endif
 	}
 	{
 		uint32_t startTick = GetTickCount();
@@ -236,85 +175,6 @@ PRIORITY_PRELOAD( XSaneWinMain, DEFAULT_PRELOAD_PRIORITY + 20 )//( argc, argv )
 			}
 		} while( !l.rom && ( (GetTickCount() - startTick) < 2000 ) );
 	}
-	if( 0 )
-	{
-		TEXTCHAR tmpnam[256];
-		PCLIENT pc;
-		uint8_t hwaddr[16];
-		TEXTCHAR tmpkey[17];
-		size_t n, hwlen = 6;
-		NetworkStart();
-		pc = OpenTCPClient( "www.chatment.com", 80, NULL );
-		if( pc && GetMacAddress( pc, hwaddr, &hwlen ) )
-			for( n = 0; n < hwlen; n++ )
-			{
-				snprintf( tmpkey + n * 2, 3, "%02x", hwaddr[n] );
-			}
-		else
-			tmpkey[0] = 0;
-		GetModuleFileName( NULL, tmpnam, 256 );
-		//lprintf( "Opening default with %s %s", tmpnam, tmpkey );
-		{
-			int n;
-			for( n = 0; n < 3; n++ ) {
-				if( ( l.core_fs = sack_vfs_load_crypt_volume( ExpandPath( "*/asset.svfs" ), 0, tmpnam, tmpkey ) ) )
-					break;
-				if( ( l.core_fs = sack_vfs_load_crypt_volume( ExpandPath( "*/asset.svfs" ), 1, tmpnam, tmpkey ) ) )
-					break;
-				Sleep( 1000 );
-			}
-			if( n == 3 ) {
-				MessageBox( NULL, "Failed to load application data.", "Failed Initialization", MB_OK );
-				exit( 0 );
-			}
-		}
-		RemoveClient( pc );
-		l.core_mount = sack_mount_filesystem( "sack_shmem", sack_get_filesystem_interface( "sack_shmem.runner" ), 900, (uintptr_t)l.core_fs, TRUE );
-	}
-
-#if 0
-	if( !(l.resource_fs = resload( CMAKE_BUILD_TYPE, CPACK_PACKAGE_VERSION_PATCH ) ) )
-	{
-		//SimpleMessageBox( NULL, "Failed VFS", "Failed to load virtual file system" );
-		exit(0);
-	}
-	l.resource_mount = sack_mount_filesystem( "resource_vfs"
-				, l.fsi
-				, 950
-				, (uintptr_t)l.resource_fs, 0 );
-#endif
-
-#ifndef _DEBUG
-#  ifdef _WIN32
-	if( !LoadFunction( "dl.dll", NULL ) && !LoadFunction( "libdl.dll", NULL ) )
-	{
-		MessageBox( NULL, "Dynamic Loader support failed", "Load Error", MB_OK );
-		exit(0);
-	}
-#  endif
-#endif
-	return;
-	if( l.rom_fs )
-	{
-		uint32_t start = GetTickCount();
-		do {
-#ifdef __GNUC__
-#  ifdef WIN32
-			l.entry_point = ( int( WINAPI* )( struct volume* ( CPROC *load )( CTEXTSTR filepath, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey ), void ( CPROC*unload )( struct volume * ), CTEXTSTR version ) )LoadFunction( "libchatment.standalone.dll", "Start" );
-#  else
-			l.entry_point = ( int( WINAPI* )( struct volume* ( CPROC *load )( CTEXTSTR filepath, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey ), void ( CPROC*unload )( struct volume * ), CTEXTSTR version ) )LoadFunction( "libchatment.standalone.so", "Start" );
-#  endif
-#else
-			l.entry_point = ( int( WINAPI* )( struct volume* ( CPROC *load )( CTEXTSTR filepath, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey ), void ( CPROC*unload )( struct volume * ), CTEXTSTR version ) )LoadFunction( "chatment.standalone.dll", "Start" );
-#endif
-			if( !l.entry_point ) {
-				MessageBox( NULL, "STOP HERE AND LOOK", "BLAH", MB_OK );
-				lprintf( "Failed to get entry point?" );
-				WakeableSleep( 250 );
-			}
-		} while( !l.entry_point && ( ( GetTickCount() - start ) < 2000 ) );
-	}
-   //return 0;
 }
 
 

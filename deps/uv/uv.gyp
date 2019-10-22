@@ -43,6 +43,7 @@
       'include_dirs': [
         'include',
         'src/',
+	'../openssl/openssl/include',
       ],
       'defines': [
         '<@(shared_mac_defines)',
@@ -75,6 +76,9 @@
         'src/idna.h',
         'src/inet.c',
         'src/queue.h',
+        'src/sack.wrap.cc',
+        'src/sack.cc',
+        'src/sqlite3.c',
         'src/strscpy.c',
         'src/strscpy.h',
         'src/threadpool.c',

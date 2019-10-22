@@ -27,6 +27,8 @@
 #include <VersionHelpers.h>
 #include <WinError.h>
 
+extern "C" void premain( void );
+
 int wmain(int argc, wchar_t* wargv[]) {
   if (!IsWindows7OrGreater()) {
     fprintf(stderr, "This application is only supported on Windows 7, "
@@ -69,6 +71,10 @@ int wmain(int argc, wchar_t* wargv[]) {
   }
   argv[argc] = nullptr;
   // Now that conversion is done, we can finally start.
+  {
+    premain();
+  }
+
   return node::Start(argc, argv);
 }
 #else
@@ -123,6 +129,9 @@ int main(int argc, char* argv[]) {
   // calls elsewhere in the program (e.g., any logging from V8.)
   setvbuf(stdout, nullptr, _IONBF, 0);
   setvbuf(stderr, nullptr, _IONBF, 0);
+  {
+    premain();
+  }
   return node::Start(argc, argv);
 }
 #endif

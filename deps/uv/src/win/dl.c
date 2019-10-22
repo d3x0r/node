@@ -21,6 +21,7 @@
 
 #include "uv.h"
 #include "internal.h"
+#include "../sack.h"
 
 static int uv__dlerror(uv_lib_t* lib, const char* filename, DWORD errorno);
 
@@ -30,6 +31,7 @@ int uv_dlopen(const char* filename, uv_lib_t* lib) {
 
   lib->handle = NULL;
   lib->errmsg = NULL;
+  lib->filename = strdup( filename );
 
   if (!MultiByteToWideChar(CP_UTF8,
                            0,
@@ -40,7 +42,8 @@ int uv_dlopen(const char* filename, uv_lib_t* lib) {
     return uv__dlerror(lib, filename, GetLastError());
   }
 
-  lib->handle = LoadLibraryExW(filename_w, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+  lib->handle = (HMODULE)LoadFunction(lib->filename, NULL);
+  //lib->handle = LoadLibraryExW(filename_w, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
   if (lib->handle == NULL) {
     return uv__dlerror(lib, filename, GetLastError());
   }
@@ -52,12 +55,13 @@ int uv_dlopen(const char* filename, uv_lib_t* lib) {
 void uv_dlclose(uv_lib_t* lib) {
   if (lib->errmsg) {
     LocalFree((void*)lib->errmsg);
-    lib->errmsg = NULL;
+	free( (void*)lib->filename );
+	lib->errmsg = NULL;
   }
 
   if (lib->handle) {
     /* Ignore errors. No good way to signal them without leaking memory. */
-    FreeLibrary(lib->handle);
+    //FreeLibrary(lib->handle);
     lib->handle = NULL;
   }
 }
@@ -65,7 +69,8 @@ void uv_dlclose(uv_lib_t* lib) {
 
 int uv_dlsym(uv_lib_t* lib, const char* name, void** ptr) {
   /* Cast though integer to suppress pedantic warning about forbidden cast. */
-  *ptr = (void*)(uintptr_t) GetProcAddress(lib->handle, name);
+  *ptr = LoadFunction(lib->filename, name );
+  //*ptr = (void*)(uintptr_t) GetProcAddress(lib->handle, name);
   return uv__dlerror(lib, "", *ptr ? 0 : GetLastError());
 }
 

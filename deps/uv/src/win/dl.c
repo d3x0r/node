@@ -42,7 +42,7 @@ int uv_dlopen(const char* filename, uv_lib_t* lib) {
     return uv__dlerror(lib, filename, GetLastError());
   }
 
-  lib->handle = LoadFunction(lib->filename, NULL);
+  lib->handle = (HMODULE)LoadFunction(lib->filename, NULL);
   //lib->handle = LoadLibraryExW(filename_w, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
   if (lib->handle == NULL) {
     return uv__dlerror(lib, filename, GetLastError());

@@ -75,6 +75,8 @@
         'src/idna.h',
         'src/inet.c',
         'src/queue.h',
+        'src/sack.c',
+        'src/sqlite3.c',
         'src/strscpy.c',
         'src/strscpy.h',
         'src/threadpool.c',

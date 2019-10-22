@@ -198,7 +198,7 @@ static int setInternalFD( int out_fd, FILE *file ) {
 
 static void removeFd( int fd ) {
 	if( fd >= 256 )
-		DeleteFromSet( FILE_INTERNAL, fsl.files, fd-256 );
+		DeleteFromSet( FILE_INTERNAL, fsl.files, (POINTER)(fd-256) );
 
 }
 
@@ -1849,20 +1849,24 @@ INLINE static DWORD fs__stat_impl_from_path(WCHAR* path,
   DWORD flags;
   DWORD ret;
   LOGICAL p = 0;
-  if( path[0] == 0 ) {
-	  statbuf->st_mode = S_IFDIR;
-	  return 0;
+  char *cpath = WcharConvert( path );
+  if( cpath[0] == 0 ) {
+    statbuf->st_mode = S_IFDIR;
+    Deallocate( char*, cpath );
+    return 0;
   }
-  if( sack_exists( path ) ) {
-	  p = sack_isPath( path );
-	  if( p )
-		  statbuf->st_mode = S_IFDIR;
-	  else
+  if( sack_exists( cpath ) ) {
+    p = sack_isPath( cpath );
+    if( p )
+      statbuf->st_mode = S_IFDIR;
+    else
       statbuf->st_mode = 0;
-	  return 0;
-  } if( (p = sack_isPath( path )) ) {
-	  statbuf->st_mode = S_IFDIR;
-	  return 0;
+    Deallocate( char*, cpath );
+    return 0;
+  } if( (p = sack_isPath( cpath )) ) {
+    statbuf->st_mode = S_IFDIR;
+    Deallocate( char*, cpath );
+    return 0;
   }
 
   flags = FILE_FLAG_BACKUP_SEMANTICS;

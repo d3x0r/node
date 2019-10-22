@@ -1,14 +1,25 @@
-#define __STATIC__
 
-/*CMake Option defined*/
+#define TARGETNAME "node.exe"
+#define USE_SQLITE
+
+#define NO_OPEN_MACRO
+#define __STATIC__
+#define NO_FILEOP_ALIAS
+#define SACK_BAG_EXPORTS
+//#define TYPELIB_SOURCE
+#define __NO_INTERFACE_SUPPORT__
 /* Includes the system platform as required or appropriate. If
    under a linux system, include appropriate basic linux type
    headers, if under windows pull "windows.h".
    Includes the MOST stuff here ( a full windows.h parse is many
    many lines of code.)                                          */
 /* A macro to build a wide character string of __FILE__ */
-#define _WIDE__FILE__(n) WIDE(n)
+#define _WIDE__FILE__(n) n
 #define WIDE__FILE__ _WIDE__FILE__(__FILE__)
+#if _XOPEN_SOURCE < 500
+#  undef _XOPEN_SOURCE
+#  define _XOPEN_SOURCE 500
+#endif
 #ifndef STANDARD_HEADERS_INCLUDED
 /* multiple inclusion protection symbol */
 #define STANDARD_HEADERS_INCLUDED
@@ -24,6 +35,11 @@
 #endif
 #ifndef WINVER
 #  define WINVER 0x0601
+#endif
+#ifndef _WIN32
+#  ifndef __LINUX__
+#    define __LINUX__
+#  endif
 #endif
 #if !defined(__LINUX__)
 #  ifndef STRICT
@@ -65,8 +81,10 @@
 #  define NOMEMMGR
                 // typedef METAFILEPICT
 #  define NOMETAFILE
+#  ifndef NOMINMAX
                   // Macros min(a,b) and max(a,b)
-#  define NOMINMAX
+#    define NOMINMAX
+#  endif
 // #define NOMSG                     // typedef MSG and associated routines
 // #define NOOPENFILE                // OpenFile(), OemToAnsi, AnsiToOem, and OF_*
 // #define NOSCROLL                  // SB_* and scrolling routines
@@ -121,6 +139,12 @@
 #  if defined( WIN32 ) && defined( NEED_SHLOBJ )
 #    include <shlobj.h>
 #  endif
+#  if _MSC_VER > 1500
+#    define mkdir _mkdir
+#    define fileno _fileno
+#    define stricmp _stricmp
+#    define strdup _strdup
+#  endif
 //#  include <windowsx.h>
 // we like timeGetTime() instead of GetTickCount()
 //#  include <mmsystem.h>
@@ -145,7 +169,7 @@ __declspec(dllimport) DWORD WINAPI timeGetTime(void);
 #  ifdef __cplusplus_cli
 #    include <vcclr.h>
  /*lprintf( */
-#    define DebugBreak() System::Console::WriteLine(gcnew System::String( WIDE__FILE__ WIDE("(") STRSYM(__LINE__) WIDE(") Would DebugBreak here...") ) );
+#    define DebugBreak() System::Console::WriteLine(gcnew System::String( WIDE__FILE__ "(" STRSYM(__LINE__) ") Would DebugBreak here..." ) );
 //typedef unsigned int HANDLE;
 //typedef unsigned int HMODULE;
 //typedef unsigned int HWND;
@@ -175,7 +199,11 @@ __declspec(dllimport) DWORD WINAPI timeGetTime(void);
 #    ifdef __ANDROID__
 #      define DebugBreak()
 #    else
-#      define DebugBreak()  asm("int $3\n" )
+#      if defined( __EMSCRIPTEN__ ) || defined( __ARM__ )
+#        define DebugBreak()
+#      else
+#        define DebugBreak()  __asm__("int $3\n" )
+#      endif
 #    endif
 #  endif
 #  ifdef __ANDROID_OLD_PLATFORM_SUPPORT__
@@ -213,7 +241,8 @@ extern __sighandler_t bsd_signal(int, __sighandler_t);
 #    define max(a,b) (((a)>(b))?(a):(b))
 #  endif
 #endif
-/* please Include sthdrs.h */
+#ifndef SACK_PRIMITIVE_TYPES_INCLUDED
+#define SACK_PRIMITIVE_TYPES_INCLUDED
 /* Define most of the sack core types on which everything else is
    based. Also defines some of the primitive container
    structures. We also handle a lot of platform/compiler
@@ -398,10 +427,6 @@ But WHO doesn't have stdint?  BTW is sizeof( size_t ) == sizeof( void* )
 #     ifndef RENDER_LIBRARY_SOURCE
 #       define RENDER_LIBRARY_SOURCE
 #     endif
-#     ifndef __NO_WIN32API__
-// this is moved to a CMake option (based on whter it's arm or not right now)
-//#define _OPENGL_ENABLED
-#     endif
 // define a type that is a public name struct type...
 // good thing that typedef and struct were split
 // during the process of port to /clr option.
@@ -417,199 +442,213 @@ But WHO doesn't have stdint?  BTW is sizeof( size_t ) == sizeof( void* )
 #include <wchar.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#if !defined( _WIN32 ) && !defined( __MAC__ )
+#  include <syscall.h>
+#elif defined( __MAC__ )
+#  include <sys/syscall.h>
+#endif
 #ifndef MY_TYPES_INCLUDED
-#define MY_TYPES_INCLUDED
+#  define MY_TYPES_INCLUDED
 // include this before anything else
 // thereby allowing us to redefine exit()
  // CHAR_BIT
-#include <limits.h>
+#  include <limits.h>
  // typelib requires this
-#include <stdarg.h>
-#ifdef _MSC_VER
-#ifndef UNDER_CE
+#  include <stdarg.h>
+#  ifdef _MSC_VER
+#    ifndef UNDER_CE
  // memlib requires this, and it MUST be included befoer string.h if it is used.
-#include <intrin.h>
-#endif
-#endif
+#      include <intrin.h>
+#    endif
+#  endif
  // typelib requires this
-#include <string.h>
-#if !defined( WIN32 ) && !defined( _WIN32 ) && !defined( _PNACL )
-#include <dlfcn.h>
-#endif
-#if defined( _MSC_VER )
+#  include <string.h>
+#  if !defined( WIN32 ) && !defined( _WIN32 ) && !defined( _PNACL )
+#    include <dlfcn.h>
+#  endif
+#  if defined( _MSC_VER )
 // disable pointer conversion warnings - wish I could disable this
 // according to types...
 //#pragma warning( disable:4312; disable:4311 )
 // disable deprication warnings of snprintf, et al.
 //#pragma warning( disable:4996 )
-#define EMPTY_STRUCT struct { char nothing[]; }
-#endif
-#if defined( __WATCOMC__ )
-#define EMPTY_STRUCT char
-#endif
-#ifdef __cplusplus
+#    define EMPTY_STRUCT struct { char nothing[]; }
+#  endif
+#  if defined( __WATCOMC__ )
+#     define EMPTY_STRUCT char
+#  endif
+#  ifdef __cplusplus
 /* Could also consider defining 'SACK_NAMESPACE' as 'extern "C"
    ' {' and '..._END' as '}'                                    */
-#define SACK_NAMESPACE namespace sack {
+#    define SACK_NAMESPACE namespace sack {
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define SACK_NAMESPACE_END }
+#    define SACK_NAMESPACE_END }
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _CONTAINER_NAMESPACE namespace containers {
+#    define _CONTAINER_NAMESPACE namespace containers {
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _CONTAINER_NAMESPACE_END }
+#    define _CONTAINER_NAMESPACE_END }
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _LINKLIST_NAMESPACE namespace list {
+#    define _LINKLIST_NAMESPACE namespace list {
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _LINKLIST_NAMESPACE_END }
+#    define _LINKLIST_NAMESPACE_END }
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _DATALIST_NAMESPACE namespace data_list {
+#    define _DATALIST_NAMESPACE namespace data_list {
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _DATALIST_NAMESPACE_END }
+#    define _DATALIST_NAMESPACE_END }
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _SETS_NAMESPACE namespace sets {
+#    define _SETS_NAMESPACE namespace sets {
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _SETS_NAMESPACE_END }
+#    define _SETS_NAMESPACE_END }
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _TEXT_NAMESPACE namespace text {
+#    define _TEXT_NAMESPACE namespace text {
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _TEXT_NAMESPACE_END }
+#    define _TEXT_NAMESPACE_END }
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define TEXT_NAMESPACE SACK_NAMESPACE _CONTAINER_NAMESPACE namespace text {
+#    define TEXT_NAMESPACE SACK_NAMESPACE _CONTAINER_NAMESPACE namespace text {
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define TEXT_NAMESPACE_END  } _CONTAINER_NAMESPACE_END SACK_NAMESPACE_END
-#else
+#    define TEXT_NAMESPACE_END  } _CONTAINER_NAMESPACE_END SACK_NAMESPACE_END
+#  else
 /* Define the sack namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define SACK_NAMESPACE
+#    define SACK_NAMESPACE
 /* Define the sack namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define SACK_NAMESPACE_END
+#    define SACK_NAMESPACE_END
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _CONTAINER_NAMESPACE
+#    define _CONTAINER_NAMESPACE
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _CONTAINER_NAMESPACE_END
+#    define _CONTAINER_NAMESPACE_END
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _LINKLIST_NAMESPACE
+#    define _LINKLIST_NAMESPACE
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _LINKLIST_NAMESPACE_END
+#    define _LINKLIST_NAMESPACE_END
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _DATALIST_NAMESPACE
+#    define _DATALIST_NAMESPACE
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _DATALIST_NAMESPACE_END
+#    define _DATALIST_NAMESPACE_END
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _SETS_NAMESPACE
+#    define _SETS_NAMESPACE
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _SETS_NAMESPACE_END
+#    define _SETS_NAMESPACE_END
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _TEXT_NAMESPACE
+#    define _TEXT_NAMESPACE
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define _TEXT_NAMESPACE_END
+#    define _TEXT_NAMESPACE_END
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define TEXT_NAMESPACE
+#    define TEXT_NAMESPACE
 /* Define the container namespace (when building with C++, the
    wrappers are namespace{} instead of extern"c"{} )           */
-#define TEXT_NAMESPACE_END
-#endif
+#    define TEXT_NAMESPACE_END
+#  endif
 /* declare composite SACK_CONTAINER namespace to declare sack::container in a single line */
-#define SACK_CONTAINER_NAMESPACE SACK_NAMESPACE _CONTAINER_NAMESPACE
+#  define SACK_CONTAINER_NAMESPACE SACK_NAMESPACE _CONTAINER_NAMESPACE
 /* declare composite SACK_CONTAINER namespace to close sack::container in a single line */
-#define SACK_CONTAINER_NAMESPACE_END _CONTAINER_NAMESPACE_END SACK_NAMESPACE_END
+#  define SACK_CONTAINER_NAMESPACE_END _CONTAINER_NAMESPACE_END SACK_NAMESPACE_END
 /* declare composite SACK_CONTAINER namespace to declare sack::container::list in a single line */
-#define SACK_CONTAINER_LINKLIST_NAMESPACE SACK_CONTAINER_NAMESPACE _LISTLIST_NAMESPACE
+#  define SACK_CONTAINER_LINKLIST_NAMESPACE SACK_CONTAINER_NAMESPACE _LISTLIST_NAMESPACE
 /* declare composite SACK_CONTAINER namespace to close sack::container::list in a single line */
-#define SACK_CONTAINER_LINKLIST_NAMESPACE_END _LISTLIST_NAMESPACE_END SACK_CONTAINER_NAMESPACE
+#  define SACK_CONTAINER_LINKLIST_NAMESPACE_END _LISTLIST_NAMESPACE_END SACK_CONTAINER_NAMESPACE
 // this symbols is defined to enforce
 // the C Procedure standard - using a stack, and resulting
 // in EDX:EAX etc...
-#define CPROC
-#ifdef SACK_BAG_EXPORTS
-# ifdef BUILD_GLUE
+#  define CPROC
+#  ifdef SACK_BAG_EXPORTS
+#    ifdef BUILD_GLUE
 // this is used as the export method appropriate for C#?
-#  define EXPORT_METHOD [DllImport(LibName)] public
-# else
-#  ifdef __cplusplus_cli
-#   if defined( __STATIC__ ) || defined( __LINUX__ ) || defined( __ANDROID__ )
-#     define EXPORT_METHOD
-#     define IMPORT_METHOD extern
-#   else
-#     define EXPORT_METHOD __declspec(dllexport)
-#     define IMPORT_METHOD __declspec(dllimport)
-#   endif
-#   define LITERAL_LIB_EXPORT_METHOD __declspec(dllexport)
-#   define LITERAL_LIB_IMPORT_METHOD extern
-//__declspec(dllimport)
-#  else
-#   if defined( __STATIC__ ) || defined( __LINUX__ ) || defined( __ANDROID__ )
-#      define EXPORT_METHOD
-#      define IMPORT_METHOD extern
+#      define EXPORT_METHOD [DllImport(LibName)] public
 #    else
+#      ifdef __cplusplus_cli
+#        if defined( __STATIC__ ) || defined( __LINUX__ ) || defined( __ANDROID__ )
+#          define EXPORT_METHOD
+#          define IMPORT_METHOD extern
+#        else
+#          define EXPORT_METHOD __declspec(dllexport)
+#          define IMPORT_METHOD __declspec(dllimport)
+#        endif
+#        define LITERAL_LIB_EXPORT_METHOD __declspec(dllexport)
+#        define LITERAL_LIB_IMPORT_METHOD extern
+//__declspec(dllimport)
+#      else
+#        if defined( __STATIC__ ) || defined( __LINUX__ ) || defined( __ANDROID__ )
+#          define EXPORT_METHOD
+#          define IMPORT_METHOD extern
+#        else
 /* Method to declare functions exported from a DLL. (nothign on
    LINUX or building statically, but __declspec(dllimport) on
    windows )                                                    */
-#      define EXPORT_METHOD __declspec(dllexport)
+#          define EXPORT_METHOD __declspec(dllexport)
 /* method to define a function which will be Imported from a
    library. Under windows, this is probably
    __declspec(dllimport). Under linux this is probably 'extern'. */
-#      define IMPORT_METHOD __declspec(dllimport)
+#          define IMPORT_METHOD __declspec(dllimport)
+#        endif
+#        define LITERAL_LIB_EXPORT_METHOD __declspec(dllexport)
+#        define LITERAL_LIB_IMPORT_METHOD __declspec(dllimport)
+#      endif
 #    endif
-#      define LITERAL_LIB_EXPORT_METHOD __declspec(dllexport)
-#      define LITERAL_LIB_IMPORT_METHOD __declspec(dllimport)
-#  endif
-# endif
-#else
-# if ( !defined( __STATIC__ ) && defined( WIN32 ) && !defined( __cplusplus_cli) )
-#  define EXPORT_METHOD __declspec(dllexport)
-#  define IMPORT_METHOD __declspec(dllimport)
-#  define LITERAL_LIB_EXPORT_METHOD __declspec(dllexport)
-#  define LITERAL_LIB_IMPORT_METHOD __declspec(dllimport)
-# else
-// MRT:  This is needed.  Need to see what may be defined wrong and fix it.
-#  if defined( __LINUX__ ) || defined( __STATIC__ )
-#    define EXPORT_METHOD
-#    define IMPORT_METHOD extern
-#    define LITERAL_LIB_EXPORT_METHOD
-#    define LITERAL_LIB_IMPORT_METHOD extern
 #  else
+#  if ( !defined( __STATIC__ ) && defined( WIN32 ) && !defined( __cplusplus_cli) )
 #    define EXPORT_METHOD __declspec(dllexport)
 #    define IMPORT_METHOD __declspec(dllimport)
+#    define LITERAL_LIB_EXPORT_METHOD __declspec(dllexport)
+#    define LITERAL_LIB_IMPORT_METHOD __declspec(dllimport)
+#  else
+// MRT:  This is needed.  Need to see what may be defined wrong and fix it.
+#    if defined( __LINUX__ ) || defined( __STATIC__ ) || defined( __ANDROID__ )
+#      define EXPORT_METHOD
+#      define IMPORT_METHOD extern
+#      define LITERAL_LIB_EXPORT_METHOD
+#      define LITERAL_LIB_IMPORT_METHOD extern
+#    else
+#      define EXPORT_METHOD __declspec(dllexport)
+#      define IMPORT_METHOD __declspec(dllimport)
 /* Define how methods in LITERAL_LIBRARIES are exported.
    literal_libraries are libraries that are used for plugins,
    and are dynamically loaded by code. They break the rules of
    system prefix and suffix extensions. LITERAL_LIBRARIES are
    always dynamic, and never static.                           */
-#    define LITERAL_LIB_EXPORT_METHOD __declspec(dllexport)
+#      define LITERAL_LIB_EXPORT_METHOD __declspec(dllexport)
 /* Define how methods in LITERAL_LIBRARIES are imported.
    literal_libraries are libraries that are used for plugins,
    and are dynamically loaded by code. They break the rules of
    system prefix and suffix extensions. LITERAL_LIBRARIES are
    always dynamic, and never static.                           */
-#    define LITERAL_LIB_IMPORT_METHOD __declspec(dllimport)
+#      define LITERAL_LIB_IMPORT_METHOD __declspec(dllimport)
+#    endif
 #  endif
-# endif
+#endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <emscripten/emscripten.h>
+// Emscripten exports just need to be not optimized out.
+#  undef  EXPORT_METHOD
+#  define EXPORT_METHOD                EMSCRIPTEN_KEEPALIVE
+#  undef  LITERAL_LIB_EXPORT_METHOD
+#  define LITERAL_LIB_EXPORT_METHOD    EMSCRIPTEN_KEEPALIVE
 #endif
 // used when the keword specifying a structure is packed
 // needs to prefix the struct keyword.
@@ -689,12 +728,12 @@ SACK_NAMESPACE
 #define WINPROC(type,name)   type WINAPI name
 #define CALLBACKPROC(type,name) type CALLBACK name
 #if defined( __WATCOMC__ )
-#define LIBMAIN()   static int __LibMain( HINSTANCE ); PRELOAD( LibraryInitializer ) {	 __LibMain( GetModuleHandle(_WIDE(TARGETNAME)) );   }	 static int __LibMain( HINSTANCE hInstance ) {
+#define LIBMAIN()   static int __LibMain( HINSTANCE ); PRELOAD( LibraryInitializer ) {	 __LibMain( GetModuleHandle(TARGETNAME) );   }	 static int __LibMain( HINSTANCE hInstance ) {
 #define LIBEXIT() } static int LibExit( void ); ATEXIT( LiraryUninitializer ) { LibExit(); } int LibExit(void) {
 #define LIBMAIN_END() }
 #else
 #ifdef TARGETNAME
-#define LIBMAIN()   static int __LibMain( HINSTANCE ); PRELOAD( LibraryInitializer ) {	 __LibMain( GetModuleHandle(_WIDE(TARGETNAME)) );   }	 static int __LibMain( HINSTANCE hInstance ) {
+#define LIBMAIN()   static int __LibMain( HINSTANCE ); PRELOAD( LibraryInitializer ) {	 __LibMain( GetModuleHandle(TARGETNAME) );   }	 static int __LibMain( HINSTANCE hInstance ) {
 #else
 #define LIBMAIN()   TARGETNAME_NOT_DEFINED
 #endif
@@ -757,13 +796,13 @@ SACK_NAMESPACE
 #define STDCALL _stdcall
 #define PUBLIC(type,name)        type STDPROC name
 #ifdef __STATIC__
-			/*Log( WIDE("Library Enter" ) );*/
+			/*Log( "Library Enter" );*/
 #define LIBMAIN() static WINPROC(int, LibMain)(HINSTANCE hInstance, DWORD dwReason, void *unused )		 { if( dwReason == DLL_PROCESS_ATTACH ) {
  /* end if */
 #define LIBEXIT() } if( dwReason == DLL_PROCESS_DETACH ) {
 #define LIBMAIN_END()  } return 1; }
 #else
-			/*Log( WIDE("Library Enter" ) );*/
+			/*Log( "Library Enter" );*/
 #define LIBMAIN() WINPROC(int, LibMain)(HINSTANCE hInstance, DWORD dwReason, void *unused )		 { if( dwReason == DLL_PROCESS_ATTACH ) {
  /* end if */
 #define LIBEXIT() } if( dwReason == DLL_PROCESS_DETACH ) {
@@ -775,13 +814,13 @@ SACK_NAMESPACE
 #define PACKED
 #endif
 #define TOCHR(n) #n[0]
-#define TOSTR(n) WIDE(#n)
+#define TOSTR(n) #n
 #define STRSYM(n) TOSTR(n)
-#define _WIDE__FILE__(n) WIDE(n)
+#define _WIDE__FILE__(n) n
 #define WIDE__FILE__ _WIDE__FILE__(__FILE__)
 /* a constant text string that represents the current source
    filename and line... fourmated as "source.c(11) :"        */
-#define FILELINE  TEXT(__FILE__) WIDE("(" ) TEXT(STRSYM(__LINE__))WIDE(" : " ))
+#define FILELINE  TEXT(__FILE__) "(" TEXT(STRSYM(__LINE__))" : ")
 #if defined( _MSC_VER ) || defined( __PPCCPP__ )
 /* try and define a way to emit comipler messages... but like no compilers support standard ways to do this accross the board.*/
 #define pragnote(msg) message( FILELINE msg )
@@ -794,10 +833,10 @@ SACK_NAMESPACE
 #define pragnoteonly(msg) msg
 #endif
 /* specify a consistant macro to pass current file and line information.   This are appended parameters, and common usage is to only use these with _DEBUG set. */
-#define FILELINE_SRC         , (CTEXTSTR)_WIDE(__FILE__), __LINE__
+#define FILELINE_SRC         , __FILE__, __LINE__
 /* specify a consistant macro to pass current file and line information, to functions which void param lists.   This are appended parameters, and common usage is to only use these with _DEBUG set. */
-#define FILELINE_VOIDSRC     (CTEXTSTR)_WIDE(__FILE__), __LINE__
-//#define FILELINE_LEADSRC     (CTEXTSTR)_WIDE(__FILE__), __LINE__,
+#define FILELINE_VOIDSRC     __FILE__, __LINE__
+//#define FILELINE_LEADSRC     __FILE__, __LINE__,
 /* specify a consistant macro to define file and line parameters, to functions with otherwise void param lists.  This are appended parameters, and common usage is to only use these with _DEBUG set. */
 #define FILELINE_VOIDPASS    CTEXTSTR pFile, uint32_t nLine
 //#define FILELINE_LEADPASS    CTEXTSTR pFile, uint32_t nLine,
@@ -805,18 +844,20 @@ SACK_NAMESPACE
 #define FILELINE_PASS        , CTEXTSTR pFile, uint32_t nLine
 /* specify a consistant macro to forward file and line parameters.   This are appended parameters, and common usage is to only use these with _DEBUG set. */
 #define FILELINE_RELAY       , pFile, nLine
+/* specify a consistant macro to forward file and line parameters.   This are appended parameters, and common usage is to only use these with _DEBUG set. */
+#define FILELINE_NULL        , NULL, 0
 /* specify a consistant macro to forward file and line parameters, to functions which have void parameter lists without this information.  This are appended parameters, and common usage is to only use these with _DEBUG set. */
 #define FILELINE_VOIDRELAY   pFile, nLine
 /* specify a consistant macro to format file and line information for printf formated strings. */
-#define FILELINE_FILELINEFMT WIDE("%s(%") _32f WIDE("): ")
-#define FILELINE_FILELINEFMT_MIN WIDE("%s(%") _32f WIDE(")")
+#define FILELINE_FILELINEFMT "%s(%" _32f "): "
+#define FILELINE_FILELINEFMT_MIN "%s(%" _32f ")"
 #define FILELINE_NULL        , NULL, 0
 #define FILELINE_VOIDNULL    NULL, 0
 /* define static parameters which are the declaration's current file and line, for stubbing in where debugging is being stripped.
   usage
     FILELINE_VARSRC: // declare pFile and nLine variables.
 	*/
-#define FILELINE_VARSRC       CTEXTSTR pFile = _WIDE(__FILE__); uint32_t nLine = __LINE__
+#define FILELINE_VARSRC       CTEXTSTR pFile = __FILE__; uint32_t nLine = __LINE__
 // this is for passing FILE, LINE information to allocate
 // useful during DEBUG phases only...
 // drop out these debug relay paramters for managed code...
@@ -844,6 +885,9 @@ SACK_NAMESPACE
 /* <combine sack::DBG_PASS>
    in NDEBUG mode, pass nothing */
 #define DBG_RELAY
+/* <combine sack::DBG_PASS>
+   in _DEBUG mode, pass FILELINE_NULL */
+#define DBG_NULL
 /* <combine sack::DBG_PASS>
    in NDEBUG mode, pass nothing */
 #define DBG_VOIDRELAY
@@ -1029,6 +1073,9 @@ SACK_NAMESPACE
    in _DEBUG mode, pass FILELINE_RELAY */
 #define DBG_RELAY       FILELINE_RELAY
 /* <combine sack::DBG_PASS>
+	  in _DEBUG mode, pass FILELINE_NULL */
+#define DBG_NULL        FILELINE_NULL
+/* <combine sack::DBG_PASS>
    in _DEBUG mode, pass FILELINE_VOIDRELAY */
 #define DBG_VOIDRELAY   FILELINE_VOIDRELAY
 /* <combine sack::DBG_PASS>
@@ -1044,7 +1091,8 @@ SACK_NAMESPACE
 // cannot declare _0 since that overloads the
 // vector library definition for origin (0,0,0,0,...)
 //typedef void             _0; // totally unusable to declare 0 size things.
-/* the only type other than when used in a function declaration that void is valid is as a pointer to void. no _0 type exists (it does, but it's in vectlib, and is an origin vector)*/
+/* the only type other than when used in a function declaration that void is valid is as a pointer to void. no _0 type exists
+	 (it does, but it's in vectlib, and is an origin vector)*/
 typedef void             *P_0;
 /*
  * several compilers are rather picky about the types of data
@@ -1052,10 +1100,18 @@ typedef void             *P_0;
  * should be used instead of uint32_t (DWORD)
  */
 typedef unsigned int  BIT_FIELD;
+/*
+ * several compilers are rather picky about the types of data
+ * used for bit field declaration, therefore this type
+ * should be used instead of int32_t (LONG)
+ */
+typedef int  SBIT_FIELD;
 // have to do this on a per structure basis - otherwise
-// any included headers with structures to use will get FUCKED
+// any included headers with structures to use will get
+// padded as normal; this is appended to a strcture
+// and is ued on GCC comiplers for __attribute__((packed))
 #ifndef PACKED
-#define PACKED
+#  define PACKED
 #endif
 /* An pointer to a volatile unsigned integer type that is 64 bits long. */
 //typedef volatile uint64_t  *volatile int64_t*;
@@ -1065,43 +1121,6 @@ typedef volatile uintptr_t        *PVPTRSZVAL;
 typedef size_t         INDEX;
 /* An index which is not valid; equates to 0xFFFFFFFFUL or negative one cast as an INDEX... ((INDEX)-1). */
 #define INVALID_INDEX ((INDEX)-1)
-#ifdef __CYGWIN__
-typedef unsigned short wchar_t;
-#endif
-// may consider changing this to uint16_t* for unicode...
-typedef wchar_t X_16;
-/* This is a pointer to wchar_t. A 16 bit value that is
-   character data, and is not signed or unsigned.       */
-typedef wchar_t *PX_16;
-#if defined( UNICODE ) || defined( SACK_COM_OBJECT )
-//should also consider revisiting code that was updated for TEXTCHAR to char conversion methods...
-#  ifdef _MSC_VER
-#    ifdef UNDER_CE
-#      define NULTERM
-#    else
-#      define NULTERM __nullterminated
-#    endif
-#  else
-#    define NULTERM
-#  endif
-#define WIDE(s)  L##s
-#define _WIDE(s)  WIDE(s)
-#define cWIDE(s)  s
-#define _cWIDE(s)  cWIDE(s)
- // constant text string content
-typedef NULTERM          const X_16      *CTEXTSTR;
- // pointer to constant text string content
-typedef NULTERM          CTEXTSTR        *PCTEXTSTR;
-typedef NULTERM          X_16            *TEXTSTR;
-/* a text 16 bit character  */
-typedef X_16             TEXTCHAR;
-#else
-#define WIDE(s)   s
-#define _WIDE(s)  s
-#define cWIDE(s)   s
-/* Modified WIDE wrapper that actually forces non-unicode
-   string.                                                */
-#define _cWIDE(s)  s
 // constant text string content
 typedef const char     *CTEXTSTR;
 /* A non constant array of TEXTCHAR. A pointer to TEXTCHAR. A
@@ -1117,7 +1136,6 @@ typedef CTEXTSTR const *PCTEXTSTR;
 #endif
 /* a text 8 bit character  */
 typedef char            TEXTCHAR;
-#endif
 /* a character rune.  Strings should be interpreted as UTF-8 or 16 depending on UNICODE compile option.
    GetUtfChar() from strings.  */
 typedef uint32_t             TEXTRUNE;
@@ -1151,41 +1169,41 @@ SACK_NAMESPACE_END
 SACK_NAMESPACE
 /* 16 bit unsigned decimal output printf format specifier. This would
    otherwise be defined in \<inttypes.h\>                */
-#define _16f   WIDE("u" )
+#define _16f   "u"
 /* 16 bit hex output printf format specifier. This would
    otherwise be defined in \<inttypes.h\>                */
-#define _16fx   WIDE("x" )
+#define _16fx   "x"
 /* 16 bit HEX output printf format specifier. This would
    otherwise be defined in \<inttypes.h\>                */
-#define _16fX   WIDE("X" )
+#define _16fX   "X"
 /* 16 bit signed decimal output printf format specifier. This
    would otherwise be defined in \<inttypes.h\>               */
-#define _16fs   WIDE("d" )
+#define _16fs   "d"
 /* 8 bit unsigned decimal output printf format specifier. This would
    otherwise be defined in \<inttypes.h\>                */
-#define _8f   WIDE("u" )
+#define _8f   "u"
 /* 8 bit hex output printf format specifier. This would
    otherwise be defined in \<inttypes.h\>                */
-#define _8fx   WIDE("x" )
+#define _8fx   "x"
 /* 8 bit HEX output printf format specifier. This would
    otherwise be defined in \<inttypes.h\>                */
-#define _8fX   WIDE("X" )
+#define _8fX   "X"
 /* 8 bit signed decimal output printf format specifier. This
    would otherwise be defined in \<inttypes.h\>               */
-#define _8fs   WIDE("d" )
+#define _8fs   "d"
 #if defined( __STDC_FORMAT_MACROS )
-#  define _32f   _WIDE( PRIu32 )
-#  define _32fx   _WIDE( PRIx32 )
-#  define _32fX   _WIDE( PRIX32 )
-#  define _32fs   _WIDE( PRId32 )
-#  define _64f    _WIDE(PRIu64)
-#  define _64fx   _WIDE(PRIx64)
-#  define _64fX   _WIDE(PRIX64)
-#  define _64fs   _WIDE(PRId64)
-#  define _64f    _WIDE(PRIu64)
-#  define _64fx   _WIDE(PRIx64)
-#  define _64fX   _WIDE(PRIX64)
-#  define _64fs   _WIDE(PRId64)
+#  define _32f   PRIu32
+#  define _32fx    PRIx32
+#  define _32fX    PRIX32
+#  define _32fs    PRId32
+#  define _64f    PRIu64
+#  define _64fx   PRIx64
+#  define _64fX   PRIX64
+#  define _64fs   PRId64
+#  define _64f    PRIu64
+#  define _64fx   PRIx64
+#  define _64fX   PRIX64
+#  define _64fs   PRId64
 // non-unicode strings
 #  define c_32f    PRIu32
 #  define c_32fx   PRIx32
@@ -1196,10 +1214,10 @@ SACK_NAMESPACE
 #  define c_64fX   PRIX64
 #  define c_64fs   PRId64
 #else
-#  define _32f   WIDE("u" )
-#  define _32fx   WIDE("x" )
-#  define _32fX   WIDE("X" )
-#  define _32fs   WIDE("d" )
+#  define _32f   "u"
+#  define _32fx   "x"
+#  define _32fX   "X"
+#  define _32fs   "d"
 #  define c_32f   "u"
 #  define c_32fx  "x"
 #  define c_32fX  "X"
@@ -1209,38 +1227,32 @@ SACK_NAMESPACE
 #  define c_64fX   "llX"
 #  define c_64fs   "lld"
 #endif
-#if defined( UNICODE )
-#  define _cstring_f WIDE("s")
-#  define _string_f WIDE("S")
-#  define _ustring_f WIDE("S")
-#else
-#  define _cstring_f WIDE("s")
-#  define _string_f WIDE("s")
-#  define _ustring_f WIDE("S")
-#endif
+#  define _cstring_f "s"
+#  define _string_f "s"
+#  define _ustring_f "S"
 #if defined( __64__ )
 #  if defined( __STDC_FORMAT_MACROS )
 #    if !defined( __GNUC__ ) || defined( _WIN32 )
-#      define _size_f    _WIDE( PRIu64 )
-#      define _size_fx   _WIDE( PRIx64 )
-#      define _size_fX   _WIDE( PRIX64 )
-#      define _size_fs   _WIDE( PRId64 )
+#      define _size_f     PRIu64
+#      define _size_fx    PRIx64
+#      define _size_fX    PRIX64
+#      define _size_fs    PRId64
 #      define c_size_f    PRIu64
 #      define c_size_fx   PRIx64
 #      define c_size_fX   PRIX64
 #      define c_size_fs   PRId64
 #    else
-#      define _size_f    WIDE( "zu" )
-#      define _size_fx   WIDE( "zx" )
-#      define _size_fX   WIDE( "zX" )
-#      define _size_fs   WIDE( "zd" )
+#      define _size_f    "zu"
+#      define _size_fx   "zx"
+#      define _size_fX   "zX"
+#      define _size_fs   "zd"
 #      define c_size_f    "zu"
 #      define c_size_fx   "zx"
 #      define c_size_fX   "zX"
 #      define c_size_fs   "zd"
 #    endif
-#    define _PTRSZVALfs _WIDE( PRIuPTR )
-#    define _PTRSZVALfx _WIDE( PRIxPTR )
+#    define _PTRSZVALfs  PRIuPTR
+#    define _PTRSZVALfx  PRIxPTR
 #    define cPTRSZVALfs PRIuPTR
 #    define cPTRSZVALfx PRIxPTR
 #  else
@@ -1254,17 +1266,17 @@ SACK_NAMESPACE
 #      define c_size_fX  c_64fX
 #      define c_size_fs  c_64fs
 #    else
-#      define _size_f    WIDE( "zu" )
-#      define _size_fx   WIDE( "zx" )
-#      define _size_fX   WIDE( "zX" )
-#      define _size_fs   WIDE( "zd" )
+#      define _size_f    "zu"
+#      define _size_fx   "zx"
+#      define _size_fX   "zX"
+#      define _size_fs   "zd"
 #      define c_size_f    "zu"
 #      define c_size_fx   "zx"
 #      define c_size_fX   "zX"
 #      define c_size_fs   "zd"
 #    endif
-#    define _PTRSZVALfs _WIDE( PRIuPTR )
-#    define _PTRSZVALfx _WIDE( PRIxPTR )
+#    define _PTRSZVALfs  PRIuPTR
+#    define _PTRSZVALfx  PRIxPTR
 #    define cPTRSZVALfs PRIuPTR
 #    define cPTRSZVALfx PRIxPTR
 #  endif
@@ -1272,26 +1284,26 @@ SACK_NAMESPACE
 #  if defined( __STDC_FORMAT_MACROS )
       // this HAS been fixed in UCRT - 2015!  but it'll take 5 years before everyone has that...
 #    if !defined( __GNUC__ ) || defined( _WIN32 )
-#      define _size_f    _WIDE( PRIu32 )
-#      define _size_fx   _WIDE( PRIx32 )
-#      define _size_fX   _WIDE( PRIX32 )
-#      define _size_fs   _WIDE( PRId32 )
+#      define _size_f     PRIu32
+#      define _size_fx    PRIx32
+#      define _size_fX    PRIX32
+#      define _size_fs    PRId32
 #      define c_size_f    PRIu32
 #      define c_size_fx   PRIx32
 #      define c_size_fX   PRIX32
 #      define c_size_fs   PRId32
 #    else
-#      define _size_f    WIDE( "zu" )
-#      define _size_fx   WIDE( "zx" )
-#      define _size_fX   WIDE( "zX" )
-#      define _size_fs   WIDE( "zd" )
+#      define _size_f    "zu"
+#      define _size_fx   "zx"
+#      define _size_fX   "zX"
+#      define _size_fs   "zd"
 #      define c_size_f    "zu"
 #      define c_size_fx   "zx"
 #      define c_size_fX   "zX"
 #      define c_size_fs   "zd"
 #    endif
-#    define _PTRSZVALfs _WIDE( PRIuPTR )
-#    define _PTRSZVALfx _WIDE( PRIxPTR )
+#    define _PTRSZVALfs  PRIuPTR
+#    define _PTRSZVALfx  PRIxPTR
 #    define cPTRSZVALfs PRIuPTR
 #    define cPTRSZVALfx PRIxPTR
 #  else
@@ -1306,83 +1318,153 @@ SACK_NAMESPACE
 #      define c_size_fX   c_32fX
 #      define c_size_fs   c_32fs
 #    else
-#      define _size_f    WIDE( "zu" )
-#      define _size_fx   WIDE( "zx" )
-#      define _size_fX   WIDE( "zX" )
-#      define _size_fs   WIDE( "zd" )
+#      define _size_f    "zu"
+#      define _size_fx   "zx"
+#      define _size_fX   "zX"
+#      define _size_fs   "zd"
 #      define c_size_f    "zu"
 #      define c_size_fx   "zx"
 #      define c_size_fX   "zX"
 #      define c_size_fs   "zd"
 #    endif
-#    define _PTRSZVALfs _WIDE( PRIuPTR )
-#    define _PTRSZVALfx _WIDE( PRIxPTR )
+#    define _PTRSZVALfs  PRIuPTR
+#    define _PTRSZVALfx  PRIxPTR
 #    define cPTRSZVALfs PRIuPTR
 #    define cPTRSZVALfx PRIxPTR
 #  endif
 #endif
-#define PTRSZVALf WIDE("p" )
-#define _PTRSZVALf WIDE("p" )
+#define PTRSZVALf "p"
+#define _PTRSZVALf "p"
 #if defined( _MSC_VER ) && ( _MSC_VER < 1900 )
 /* 64 bit unsigned decimal output printf format specifier. This would
    otherwise be defined in \<inttypes.h\> as PRIu64              */
-#define _64f    WIDE("llu")
+#define _64f    "llu"
 /* 64 bit hex output printf format specifier. This would
    otherwise be defined in \<inttypes.h\> as PRIxFAST64                */
-#define _64fx   WIDE("llx")
+#define _64fx   "llx"
 /* 64 bit HEX output printf format specifier. This would
    otherwise be defined in \<inttypes.h\> as PRIxFAST64                */
-#define _64fX   WIDE("llX")
+#define _64fX   "llX"
 /* 64 bit signed decimal output printf format specifier. This
    would otherwise be defined in \<inttypes.h\> as PRIdFAST64               */
-#define _64fs   WIDE("lld")
+#define _64fs   "lld"
 #endif
 // This should be for several years a
 // sufficiently large type to represent
 // threads and processes.
 typedef uint64_t THREAD_ID;
 #define GetMyThreadIDNL GetMyThreadID
-#if defined( _WIN32 ) || defined( __CYGWIN__ )
-#define _GetMyThreadID()  ( (( ((uint64_t)GetCurrentProcessId()) << 32 ) | ( (uint64_t)GetCurrentThreadId() ) ) )
-#define GetMyThreadID()  (GetThisThreadID())
+#if defined( _WIN32 )
+#  define _GetMyThreadID()  ( (( ((uint64_t)GetCurrentProcessId()) << 32 ) | ( (uint64_t)GetCurrentThreadId() ) ) )
+#  define GetMyThreadID()  (GetThisThreadID())
 #else
 // this is now always the case
 // it's a safer solution anyhow...
-#ifndef GETPID_RETURNS_PPID
-#define GETPID_RETURNS_PPID
+#  ifdef __MAC__
+#    define GetMyThreadID()  (( ((uint64_t)getpid()) << 32 ) | ( (uint64_t)( syscall(SYS_thread_selfid) ) ) )
+#  else
+#    ifndef GETPID_RETURNS_PPID
+#      define GETPID_RETURNS_PPID
+#    endif
+#    ifdef GETPID_RETURNS_PPID
+#      ifdef __ANDROID__
+#        define GetMyThreadID()  (( ((uint64_t)getpid()) << 32 ) | ( (uint64_t)(gettid()) ) )
+#      else
+#        if defined( __EMSCRIPTEN__ )
+#          define GetMyThreadID()  ( (uint64_t)(pthread_self()) )
+#        else
+#          define GetMyThreadID()  (( ((uint64_t)getpid()) << 32 ) | ( (uint64_t)(syscall(SYS_gettid)) ) )
+#        endif
+#      endif
+#    else
+#      define GetMyThreadID()  (( ((uint64_t)getppid()) << 32 ) | ( (uint64_t)(getpid()|0x40000000)) )
+#    endif
+#  endif
+#  define _GetMyThreadID GetMyThreadID
 #endif
-#ifdef GETPID_RETURNS_PPID
-#ifdef __ANDROID__
-#define GetMyThreadID()  (( ((uint64_t)getpid()) << 32 ) | ( (uint64_t)(gettid()) ) )
-#else
-#define GetMyThreadID()  (( ((uint64_t)getpid()) << 32 ) | ( (uint64_t)(pthread_self()) ) )
-#endif
-#else
-#define GetMyThreadID()  (( ((uint64_t)getppid()) << 32 ) | ( (uint64_t)(getpid()|0x40000000)) )
-#endif
-#define _GetMyThreadID GetMyThreadID
-#endif
-//#error blah
-// general macros for linking lists using
-#define DeclareLink( type )  type *next;type **me
-#define RelinkThing( root, node )	   ((( node->me && ( (*node->me)=node->next ) )?	  node->next->me = node->me:0),(node->next = NULL),(node->me = NULL),node),	 ((( node->next = root )?	        (root->me = &node->next):0),	  (node->me = &root),	             (root = node) )
+//---------------------- Declare Link; 'single and a half'ly-linked lists -----------------------
+// Thse macros are for linking and unlininking things in a linked list.
+// The list is basically a singly-linked list, but also references the pointer that
+// is pointing at the current node.  This simplifies insert/remove operations, because
+// the specific list that the node is in, is not required.
+// List heads will always be updated correctly.
+//
+// A few 'tricks' are available, such as
+//     0) These are deemed dangerous; and uncomprehendable by anyone but the maintainer.
+//        use at your own time and expense required to explain WHY these work.
+//     1) when declaring a root node, include another node before it, and it's
+//        simple to make this a circularly linked list.
+//     2) defining DeclareLink at the start of the strcture, the 'me' pointer
+//        also happens to be 'prior', so you can step through the list in both
+//        directions.
+//
+//
+//
+// struct my_node {
+//    DeclareLink( struct my_node );
+//    // ...
+// };
+//
+// that declares
+//      struct my_node *next;  // the next node in list.
+//      struct my_node **me;   // address of the pointer pointing to 'me';
+//
+//
+//  struct my_node *root; // a root of a list of my_node.  It should be initialized to NULL.
+//
+//  struct my_node *newNode = (struct my_node*)malloc( sizeof( *newNode ) );
+//     // does not require next or me to be initiialized.
+//  LinkThing( root, newNode );
+//     // now newNode is in the list.
+//
+//  to remove from a list
+//
+//  struct my_node *someNode; // this should be a pointer to some valid node.
+//  UnlinkThing( someNode );
+//     The new node is now not in the list.
+//
+//  To move one node from one list to another
+//
+//   struct my_node *rootAvail;  // available nodes
+//   struct my_node *rootUsed;   // nodes in use
+//
+//   struct my_node *someNode; // some node in a list
+//   someNode = rootAvail; // get first available.
+//   if( !someNode ) ; // create a new one or abort
+//   RelinkThing( rootUsed, someNode );
+//      'someNode' is removed from its existing list, and added to the 'rootUsed' list.
+//
+// For Declaring the link structure members for lists
+#define DeclareLink( type )  type *next; type **me
 /* Link a new node into the list.
    Example
    struct mynode
    {
-   DeclareLink( struct mynode );
+       DeclareLink( struct mynode );
    } *node;
-   struct mynode *list;
-   LinkThing( list_root, node );  */
+	struct mynode *list;
+   // node allocation not shown.
+	LinkThing( list_root, node );
+*/
 #define LinkThing( root, node )		     ((( (node)->next = (root) )?	        (((root)->me) = &((node)->next)):0),	  (((node)->me) = &(root)),	             ((root) = (node)) )
-/* Link a node to the end of a list. Link thing inserts the new
-   node as the new head of the list.                            */
+/* Link a node to the end of a list. LinkThing() inserts the new
+ node as the new head of the list.
+ this has to scan the list to find the end, so it is a O(n) operation.
+ All other linked list operations are O(1)
+ */
 #define LinkLast( root, type, node ) if( node ) do { if( !root )	 { root = node; (node)->me=&root; }	 else { type tmp;	 for( tmp = root; tmp->next; tmp = tmp->next );	 tmp->next = (node);	 (node)->me = &tmp->next;	 } } while (0)
 // put 'Thing' after 'node'
+// inserts 'node' after Thing
 #define LinkThingAfter( node, thing )	 ( ( (thing)&&(node))	   ?(((((thing)->next = (node)->next))?((node)->next->me = &(thing)->next):0)	  ,((thing)->me = &(node)->next), ((node)->next = thing))	  :((node)=(thing)) )
 //
 // put 'Thing' before 'node'... so (*node->me) = thing
+// similar to LinkThingAfter but puts the new 'thing'
+// before the 'node' specified.
 #define LinkThingBefore( node, thing )	 {  thing->next = (*node->me);	(*node->me) = thing;    thing->me = node->me;       node->me = &thing->next;     }
+// move a list from one list to another.
+// unlinks node from where it was, inserts at the head of another.
+// this can also be use to reproiritize within the same list.
+#define RelinkThing( root, node )	   ((( node->me && ( (*node->me)=node->next ) )?	  node->next->me = node->me:0),(node->next = NULL),(node->me = NULL),node),	 ((( node->next = root )?	        (root->me = &node->next):0),	  (node->me = &root),	             (root = node) )
 /* Remove a node from a list. Requires only the node. */
 #define UnlinkThing( node )	                      ((( (node) && (node)->me && ( (*(node)->me)=(node)->next ) )?	  (node)->next->me = (node)->me:0),((node)->next = NULL),((node)->me = NULL),(node))
 // this has two expressions duplicated...
@@ -1390,18 +1472,18 @@ typedef uint64_t THREAD_ID;
 // the self-circular link needs to be duplicated.
 // GrabThing is used for nodes which are circularly bound
 #define GrabThing( node )	    ((node)?(((node)->me)?(((*(node)->me)=(node)->next)?	 ((node)->next->me=(node)->me),((node)->me=&(node)->next):NULL):((node)->me=&(node)->next)):NULL)
-/* Go to the next node with links declared by DeclareLink */
+/* Go to the next node with links declared by DeclareLink
+ safe iterator macro that tests if node is valid, which returns
+ the next item in the list, else returns NULL
+ */
 #define NextLink(node) ((node)?(node)->next:NULL)
 // everything else is called a thing... should probably migrate to using this...
 #define NextThing(node) ((node)?(node)->next:NULL)
-//#ifndef FALSE
-//#define FALSE 0
-//#endif
-//#ifndef TRUE
-//#define TRUE (!FALSE)
-//#endif
-/* the default type to use for flag sets - flag sets are arrays of bits which can be toggled on and off by an index. */
-#define FLAGSETTYPE uint32_t
+//----------- FLAG SETS (single bit fields) -----------------
+/* the default type to use for flag sets - flag sets are arrays of bits
+ which can be set/read with/as integer values an index.
+ All of the fields in a maskset are the same width */
+#define FLAGSETTYPE uintmax_t
 /* the number of bits a specific type is.
    Example
    int bit_size_int = FLAGTYPEBITS( int ); */
@@ -1415,17 +1497,33 @@ typedef uint64_t THREAD_ID;
 // declare a set of flags...
 #define FLAGSET(v,n)   FLAGSETTYPE (v)[((n)+FLAGROUND(FLAGSETTYPE))/FLAGTYPEBITS(FLAGSETTYPE)]
 // set a single flag index
-#define SETFLAG(v,n)   ( (v)[(n)/FLAGTYPEBITS((v)[0])] |= 1 << ( (n) & FLAGROUND((v)[0]) ))
+#define SETFLAG(v,n)   ( ( (v)[(n)/FLAGTYPEBITS((v)[0])] |= (FLAGSETTYPE)1 << ( (n) & FLAGROUND((v)[0]) )),1)
 // clear a single flag index
-#define RESETFLAG(v,n) ( (v)[(n)/FLAGTYPEBITS((v)[0])] &= ~( 1 << ( (n) & FLAGROUND((v)[0]) ) ) )
+#define RESETFLAG(v,n) ( ( (v)[(n)/FLAGTYPEBITS((v)[0])] &= ~( (FLAGSETTYPE)1 << ( (n) & FLAGROUND((v)[0]) ) ) ),0)
 // test if a flags is set
-#define TESTFLAG(v,n)  ( (v)[(n)/FLAGTYPEBITS((v)[0])] & ( 1 << ( (n) & FLAGROUND((v)[0]) ) ) )
+//  result is 0 or not; the value returned is the bit shifted within the word, and not always '1'
+#define TESTFLAG(v,n)  ( (v)[(n)/FLAGTYPEBITS((v)[0])] & ( (FLAGSETTYPE)1 << ( (n) & FLAGROUND((v)[0]) ) ) )
 // reverse a flag from 1 to 0 and vice versa
-#define TOGGLEFLAG(v,n)   ( (v)[(n)/FLAGTYPEBITS((v)[0])] ^= 1 << ( (n) & FLAGROUND((v)[0]) ))
+// return value is undefined... and is a whole bunch of flags from some offset...
+// if you want ot toggle and flag and test the result, use TESTGOGGLEFLAG() instead.
+#define TOGGLEFLAG(v,n)   ( (v)[(n)/FLAGTYPEBITS((v)[0])] ^= (FLAGSETTYPE)1 << ( (n) & FLAGROUND((v)[0]) ))
+// Toggle a bit, return the state of the bit after toggling.
+#define TESTTOGGLEFLAG(v,n)  ( TOGGLEFLAG(v,n), TESTFLAG(v,n) )
+//----------- MASK SETS -----------------
+//  MASK Sets are arrays of bit-fields of some bit-width (5, 3, ... )
+//  they are set/returned as integer values.
+//  They are stored-in/accessed via a uint8_t which gives byte-offset calculations.
+// they return their value as uintmax_t from the offset memory address directly;
+//   Some platforms(Arm) may SIGBUS because of wide offset accesses spanning word boundaries.
+//   This issue may be fixed by rounding, grabbing the word aligned values and shifting manually
+// Declarataion/Instantiation of a mask set is done with MASKSET macro below
 // 32 bits max for range on mask
-#define MASK_MAX_LENGTH 32
-// gives a 32 bit mask possible from flagset..
-#define MASKSET_READTYPE uint32_t
+#define MASK_MAX_LENGTH (sizeof(MASKSET_READTYPE)*CHAR_BIT)
+/* gives a 32 bit mask possible from flagset..
+ - updated; return max int possible; but only the low N bits will be set
+ - mask sets are meant for small values, but could be used for like 21 bit fields. (another form of unicode encoding I suppose)
+ */
+#define MASKSET_READTYPE uintmax_t
 // gives byte index...
 #define MASKSETTYPE uint8_t
 /* how many bits the type specified can hold
@@ -1449,46 +1547,35 @@ typedef uint64_t THREAD_ID;
    n :  the count of masks to fit.       */
 #define MASKSETSIZE(t,n) (MASKTYPE_INDEX(t,(n+1)))
 // declare a set of flags...
-#define MASK_TOP_MASK_VAL(length,val) ((val)&( (0xFFFFFFFFUL) >> (32-(length)) ))
+#define MASK_TOP_MASK_VAL(length,val) ((val)&( ((MASKSET_READTYPE)-1) >> ((sizeof(MASKSET_READTYPE) * CHAR_BIT)-(length)) ))
 /* the mask in the dword resulting from shift-right.   (gets a mask of X bits in length) */
-#define MASK_TOP_MASK(length) ( (0xFFFFFFFFUL) >> (32-(length)) )
+#define MASK_TOP_MASK(length) ( ((MASKSET_READTYPE)-1) >> ((sizeof(MASKSET_READTYPE) * CHAR_BIT)-(length)) )
 /* the mast in the dword shifted to the left to overlap the field in the word */
-#define MASK_MASK(n,length)   (MASK_TOP_MASK(length) << (((n)*(length))&0x7) )
+#define MASK_MASK(n,length)   (MASK_TOP_MASK(length) << (((n)*(length)) & (sizeof(MASKSET_READTYPE) - 1) ) )
 // masks value with the mask size, then applies that mask back to the correct word indexing
 #define MASK_MASK_VAL(n,length,val)   (MASK_TOP_MASK_VAL(length,val) << (((n)*(length))&0x7) )
-/* declare a mask set. */
+/* declare a mask set.
+ MASKSET( maskVariableName
+        , 32 //number of items
+		  , 5 // number of bits per field
+		  );
+   declares
+	uint8_t maskVariableName[ (32*5 +(CHAR_BIT-1))/CHAR_BIT ];  //data array used for storage.
+   const int askVariableName_mask_size = 5;  // used aautomatically by macros
+*/
 #define MASKSET(v,n,r)  MASKSETTYPE  (v)[(((n)*(r))+MASK_MAX_ROUND())/MASKTYPEBITS(MASKSETTYPE)]; const int v##_mask_size = r;
-// set a field index to a value
+/* set a field index to a value
+    SETMASK( askVariableName, 3, 13 );  // set set member 3 to the value '13'
+ */
 #define SETMASK(v,n,val)    (((MASKSET_READTYPE*)((v)+((n)*(v##_mask_size))/MASKTYPEBITS((v)[0])))[0] =    ( ((MASKSET_READTYPE*)((v)+((n)*(v##_mask_size))/MASKTYPEBITS(uint8_t)))[0]                                  & (~(MASK_MASK(n,v##_mask_size))) )	                                                                           | MASK_MASK_VAL(n,v##_mask_size,val) )
-// get the value of a field
-#define GETMASK(v,n)  ( ( ((MASKSET_READTYPE*)((v)+((n)*(v##_mask_size))/MASKTYPEBITS((v)[0])))[0]                                  & MASK_MASK(n,v##_mask_size) )	                                                                           >> (((n)*(v##_mask_size))&0x7))
+/* get the value of a field
+     GETMASK( maskVariableName, 3 );   // returns '13' given the SETMASK() example code.
+ */
+#define GETMASK(v,n)  ( ( ((MASKSET_READTYPE*)((v)+((n)*(v##_mask_size))/MASKTYPEBITS((v)[0])))[0]         & MASK_MASK(n,v##_mask_size) )	                                                                           >> (((n)*(v##_mask_size))&0x7))
 /* This type stores data, it has a self-contained length in
    bytes of the data stored.  Length is in characters       */
 _CONTAINER_NAMESPACE
-#define DECLDATA(name,length) struct {size_t size; TEXTCHAR data[length];} name
-// Hmm - this can be done with MemLib alone...
-// although this library is not nessecarily part of that?
-// and it's not nessecarily allocated.
-typedef struct SimpleDataBlock {
-   size_t size;
-/* unsigned size; size is sometimes a pointer value... this
-                    means bad thing when we change platforms... Defined as
-                    uintptr_t now, so it's relative to the size of the platform
-                    anyhow.                                                    */
-#ifdef _MSC_VER
-#pragma warning (disable:4200)
-#endif
-   uint8_t  data[
-#ifndef __cplusplus
-   1
-#endif
- // beginning of var data - this is created size+sizeof(uint8_t)
-   ];
-#ifdef _MSC_VER
-#pragma warning (default:4200)
-#endif
-} DATA, *PDATA;
-/* This is a slab array of pointers, each pointer may be
+/* LIST is a slab array of pointers, each pointer may be
    assigned to point to any user data.
    Remarks
    When the list is filled to the capacity of Cnt elements, the
@@ -1731,6 +1818,7 @@ TYPELIB_PROC  void TYPELIB_CALLTYPE         EmptyList      ( PLIST *pList );
    gave up doing this sort of thing afterwards after realizing
    the methods of a library and these static methods for a class
    aren't much different.                                        */
+#  if defined( INCLUDE_SAMPLE_CPLUSPLUS_WRAPPERS )
 typedef class iList
 {
 public:
@@ -1743,8 +1831,9 @@ public:
 	inline void remove( POINTER p ) { DeleteLink( &list, p ); }
 	inline POINTER first( void ) { POINTER p; for( idx = 0, p = NULL;list && (idx < list->Cnt) && (( p = GetLink( &list, idx ) )==0); )idx++; return p; }
 	inline POINTER next( void ) { POINTER p; for( idx++;list && (( p = GetLink( &list, idx ) )==0) && idx < list->Cnt; )idx++; return p; }
-	inline POINTER get(INDEX idx) { return GetLink( &list, idx ); }
+	inline POINTER get(INDEX index) { return GetLink( &list, index ); }
 } *piList;
+#  endif
 #endif
 // address of the thing...
 typedef uintptr_t (CPROC *ForProc)( uintptr_t user, INDEX idx, POINTER *item );
@@ -1867,8 +1956,8 @@ TYPELIB_PROC  uintptr_t TYPELIB_CALLTYPE     ForAllLinks    ( PLIST *pList, ForP
    \ \                                                                 */
 #define SetLink(p,i,v)     ( SetLinkEx( (p),(i),((POINTER)(v)) DBG_SRC ) )
 #ifdef __cplusplus
-//		namespace list;
-	};
+ //		namespace list;
+	}
 #endif
 //--------------------------------------------------------
 _DATALIST_NAMESPACE
@@ -2053,8 +2142,8 @@ TYPELIB_PROC  POINTER TYPELIB_CALLTYPE      PeekLinkEx         ( PLINKSTACK *pls
    Macro to pass default debug file and line information.                    */
 #define PushLink(p, v)     PushLinkEx((p),(v) DBG_SRC)
 #ifdef __cplusplus
-//		namespace link_stack {
-		};
+ //		namespace link_stack {
+		}
 #endif
 //--------------------------------------------------------
 #ifdef __cplusplus
@@ -2362,7 +2451,7 @@ TYPELIB_PROC  int TYPELIB_CALLTYPE  EnqueMsgEx ( PMSGHANDLE pmh, POINTER buffer,
 TYPELIB_PROC  int TYPELIB_CALLTYPE  IsMsgQueueEmpty ( PMSGHANDLE pmh );
 #ifdef __cplusplus
  //namespace message {
-};
+}
 #endif
 /* Routines to deal with SLAB allocated blocks of structures.
    Each slab has multiple elements of a type in it, and the
@@ -2606,11 +2695,7 @@ TYPELIB_PROC  void TYPELIB_CALLTYPE  DeleteFromSetExx( GENERICSET *set, POINTER 
 #define DeleteFromSetEx( name, set, member, xx ) DeleteFromSetExx( (GENERICSET*)set, member, sizeof( name ), MAX##name##SPERSET DBG_SRC )
 /* <combine sack::containers::sets::DeleteFromSetExx@GENERICSET *@POINTER@int@int max>
    \ \                                                                                 */
-#ifdef _DEBUG
-#define DeleteFromSet( name, set, member ) do { P##name##SET testset = set; DeleteFromSetExx( (GENERICSET*)set, member, sizeof( name ), MAX##name##SPERSET DBG_SRC ); } while(0)
-#else
 #define DeleteFromSet( name, set, member ) DeleteFromSetExx( (GENERICSET*)set, member, sizeof( name ), MAX##name##SPERSET DBG_SRC )
-#endif
 /* Marks a member in a set as usable.
    Parameters
    set :       pointer to a genericset pointer
@@ -2944,6 +3029,9 @@ enum TextFlags {
 // flag combinatoin which represents actual data is present even with 0 size
 // extended format operations (position, ops) are also considered data.
 #define IS_DATA_FLAGS (TF_QUOTE|TF_SQUOTE|TF_BRACKET|TF_BRACE|                              TF_PAREN|TF_TAG|TF_FORMATEX|TF_FORMATABS|TF_FORMATREL)
+// this THis defines/initializes the data part of a PTEXT/TEXT structure.
+// used with DECLTEXTSZTYPE
+#define DECLDATA(name,length) struct {size_t size; TEXTCHAR data[length];} name
 #define DECLTEXTSZTYPE( name, size ) struct {    uint32_t flags;    struct text_segment_tag *Next, *Prior;    FORMAT format;    DECLDATA(data, size); } name
 /* A macro to declare a structure which is the same physically
    as a PTEXT, (for declaring static buffers). Has to be cast to
@@ -2951,7 +3039,7 @@ enum TextFlags {
    Parameters
    name :  name of the variable to create
    size :  size of the static text element. (0 content)          */
-#define DECLTEXTSZ( name, size ) DECLTEXTSZTYPE( name,(size) )	 = { TF_STATIC, NULL, NULL, {{1,1}} }
+#define DECLTEXTSZ( name, size ) DECLTEXTSZTYPE( name,(size) )	 = { TF_STATIC, NULL, NULL, {{1,1  ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}} }
 /* Defines an initializer block which can be used to satisfy a
    TEXT elemnt of a structure
    Parameters
@@ -3164,26 +3252,13 @@ TYPELIB_PROC  int TYPELIB_CALLTYPE  TextSimilar  ( PTEXT pText, CTEXTSTR text );
 //#define SameText( l1, l2 )  ( strcmp( GetText(l1), GetText(l2) ) )
 #define textmin(a,b) ( (((a)>0)&&((b)>0))?(((a)<(b))?(a):(b)):(((a)>0)?(a):((b)>0)?(b):0) )
 #ifdef __LINUX__
+#  include <strings.h>
 /* windows went with stricmp() and strnicmp(), whereas linux
  went with strcasecmp() and strncasecmp()                  */
-#  ifdef UNICODE
-#    ifndef NO_UNICODE_C
-#      define strnicmp strncasecmp
+#  define strnicmp strncasecmp
 /* windows went with stricmp() and strnicmp(), whereas linux
    went with strcasecmp() and strncasecmp()                  */
-#      define stricmp strcasecmp
-#    else
-#      define strnicmp wcsncasecmp
-/* windows went with stricmp() and strnicmp(), whereas linux
-   went with strcasecmp() and strncasecmp()                  */
-#      define stricmp wcscasecmp
-#    endif
-#  else
-#    define strnicmp strncasecmp
-/* windows went with stricmp() and strnicmp(), whereas linux
-   went with strcasecmp() and strncasecmp()                  */
-#     define stricmp strcasecmp
-#  endif
+#  define stricmp strcasecmp
 #endif
 /* Copy segment formatting to another segment... */
 TYPELIB_PROC  void TYPELIB_CALLTYPE  SegCopyFormat( PTEXT to_this, PTEXT copy_this );
@@ -3203,7 +3278,7 @@ TYPELIB_PROC  PTEXT TYPELIB_CALLTYPE  SegCreateFromTextEx( CTEXTSTR text DBG_PAS
 /* Creates a PTEXT segment from a string.
    Example
    <code lang="c++">
-   PTEXT line = SegCreateFromText( WIDE("Around the world in a day.") );
+   PTEXT line = SegCreateFromText( "Around the world in a day." );
    </code>                                                         */
 #define SegCreateFromText(t) SegCreateFromTextEx(t DBG_SRC)
 /* \ \
@@ -3382,7 +3457,7 @@ TYPELIB_PROC  void TYPELIB_CALLTYPE  SegReleaseEx( PTEXT seg DBG_PASS );
    DBG_PASS :  \file and line debugging information               */
 TYPELIB_PROC  PTEXT TYPELIB_CALLTYPE  SegConcatEx   (PTEXT output,PTEXT input,int32_t offset,size_t length DBG_PASS);
 /* <combine sack::containers::text::SegConcatEx@PTEXT@PTEXT@int32_t@size_t length>
-   looks like it takes a peice of one segment and appends it to
+   looks like it takes a piece of one segment and appends it to
    another....
    Needs More research to document correctly and exemplify.                     */
 #define SegConcat(out,in,ofs,len) SegConcatEx(out,in,ofs,len DBG_SRC)
@@ -3465,8 +3540,23 @@ TYPELIB_PROC  PTEXT TYPELIB_CALLTYPE  FlattenLine ( PTEXT pLine );
 /* Create a highest precision signed integer from a PTEXT. */
 TYPELIB_PROC  int64_t TYPELIB_CALLTYPE  IntCreateFromSeg( PTEXT pText );
 /* Converts a text to the longest precision signed integer
-   value.                                                  */
+   value.
+     allows +/- leadin ([-*]|[+*])*
+     supports 0x### (hex), 0b#### (binary), 0o#### (octal), 0### (octal)
+	 decimal 1-9[0-9]*
+	 buggy implementation supports +/- inline continue number and are either ignored(+)
+	 or changes the overall sign of the number(-).  A Decimal definatly ends the number.
+	 And octal/binary digits aren't checked for range, so 8/9 will over-flow in octal,
+	 and 2-9 overflow to upper bits in octal...
+	    0b901090 // would be like   0b 10100110    0b1001 +  010 + 1001<<3 + 0
+   */
 TYPELIB_PROC  int64_t TYPELIB_CALLTYPE  IntCreateFromText( CTEXTSTR p );
+/* Converts a text to the longest precision signed integer
+   value.  Does the work of IntCreateFromText.
+   IntCreateFromTextRef updates the pointer passed by reference so
+   the pointer ends at the first character after the returned number.
+   */
+TYPELIB_PROC  int64_t TYPELIB_CALLTYPE  IntCreateFromTextRef( CTEXTSTR *p_ );
 /* Create a high precision floating point value from PTEXT
    segment.                                                */
 TYPELIB_PROC  double TYPELIB_CALLTYPE  FloatCreateFromSeg( PTEXT pText );
@@ -3600,7 +3690,7 @@ TYPELIB_PROC  PTEXT TYPELIB_CALLTYPE  BuildLineExx( PTEXT pt, LOGICAL bSingle, P
 // text parse - more generic flavor of burst.
 //
 //static CTEXTSTR normal_punctuation=WIDE("\'\"\\({[<>]}):@%/,;!?=*&$^~#`");
-// filter_to_space WIDE(" \t")
+// filter_to_space " \t"
 TYPELIB_PROC  PTEXT TYPELIB_CALLTYPE  TextParse ( PTEXT input, CTEXTSTR punctuation, CTEXTSTR filter_tospace, int bTabs, int bSpaces  DBG_PASS );
 /* normal_punctuation=WIDE("'"\\({[\<\>]}):@%/,;!?=*&amp;$^~#`");
    Process a line of PTEXT into another line of PTEXT, but with
@@ -3669,6 +3759,8 @@ TYPELIB_PROC TEXTRUNE TYPELIB_CALLTYPE GetPriorUtfCharIndexedW( const wchar_t *f
 TYPELIB_PROC size_t TYPELIB_CALLTYPE GetDisplayableCharacterCount( const char *string, size_t max_bytes );
 TYPELIB_PROC CTEXTSTR TYPELIB_CALLTYPE GetDisplayableCharactersAtCount( const char *string, size_t character_index );
 TYPELIB_PROC size_t TYPELIB_CALLTYPE  GetDisplayableCharacterBytes( const char *string, size_t character_count );
+/* You Must Deallocate the result */
+TYPELIB_PROC char * TYPELIB_CALLTYPE WcharConvert_v2 ( const wchar_t *wch, size_t len, size_t *outlen DBG_PASS );
 /* You Must Deallocate the result */
 TYPELIB_PROC  char * TYPELIB_CALLTYPE  WcharConvertExx ( const wchar_t *wch, size_t len DBG_PASS );
 /* You Must Deallocate the result */
@@ -3867,12 +3959,12 @@ TYPELIB_PROC  INDEX TYPELIB_CALLTYPE  vvtprintf( PVARTEXT pvt, CTEXTSTR format, 
 /* encode binary buffer into base64 encoding.
    outsize is updated with the length of the buffer.
  */
-TYPELIB_PROC  TEXTCHAR * TYPELIB_CALLTYPE  EncodeBase64Ex( uint8_t* buf, size_t length, size_t *outsize, const char *encoding );
+TYPELIB_PROC  TEXTCHAR * TYPELIB_CALLTYPE  EncodeBase64Ex( const uint8_t* buf, size_t length, size_t *outsize, const char *encoding );
 /* decode base64 buffer into binary buffer
    outsize is updated with the length of the buffer.
    result should be Release()'d
  */
-TYPELIB_PROC  char * TYPELIB_CALLTYPE  DecodeBase64Ex( uint8_t* buf, size_t length, size_t *outsize, const char *encoding );
+TYPELIB_PROC  uint8_t * TYPELIB_CALLTYPE  DecodeBase64Ex( const char* buf, size_t length, size_t *outsize, const char *encoding );
 /* xor a base64 encoded string over a utf8 string, keeping the utf8 characters in the same length...
    although technically this can result in invalid character encoding where upper bits get zeroed
    result should be Release()'d
@@ -3886,8 +3978,8 @@ TYPELIB_PROC  char * TYPELIB_CALLTYPE  b64xor( const char *a, const char *b );
 // extended command entry stuff... handles editing buffers with insert/overwrite/copy/paste/etc...
 typedef struct user_input_buffer_tag {
 	// -------------------- custom cmd buffer extension
-  // position counter for pulling history
-	INDEX nHistory;
+  // position counter for pulling history; negative indexes are recalled commands.
+	int nHistory;
   // a link queue which contains the prior lines of text entered for commands.
 	PLINKQUEUE InputHistory;
  // set to TRUE when nHistory has wrapped...
@@ -4005,7 +4097,7 @@ TYPELIB_PROC LOGICAL TYPELIB_CALLTYPE ParseStringVector( CTEXTSTR data, CTEXTSTR
 TYPELIB_PROC LOGICAL TYPELIB_CALLTYPE ParseIntVector( CTEXTSTR data, int **pData, int *nData );
 #ifdef __cplusplus
  //namespace text {
-};
+}
 #endif
 //--------------------------------------------------------------------------
 #ifdef __cplusplus
@@ -4321,14 +4413,14 @@ TYPELIB_PROC  CPOINTER TYPELIB_CALLTYPE  GetPriorNode( PTREEROOT root );
 /* \Returns the total number of nodes in the tree.
    Example
    <code lang="c++">
-   uint32_t total_nodes = GetNodeCount(tree);
+   int total_nodes = GetNodeCount(tree);
    </code>                                         */
-TYPELIB_PROC  uint32_t TYPELIB_CALLTYPE  GetNodeCount ( PTREEROOT root );
+TYPELIB_PROC  int TYPELIB_CALLTYPE  GetNodeCount ( PTREEROOT root );
  // returns a shadow of the original.
 TYPELIB_PROC  PTREEROOT TYPELIB_CALLTYPE  ShadowBinaryTree( PTREEROOT root );
 #ifdef __cplusplus
  //namespace BinaryTree {
-	};
+	}
 #endif
 //--------------------------------------------------------------------------
 #ifdef __cplusplus
@@ -4366,16 +4458,16 @@ TYPELIB_PROC LOGICAL TYPELIB_CALLTYPE FamilyTreeForEach( PFAMILYTREE root, PFAMI
 			, uintptr_t psvUserData );
 #ifdef __cplusplus
  //namespace family {
-};
+}
 #endif
 //--------------------------------------------------------------------------
 //--------------------------------------------------------------------------
 #ifdef __cplusplus
 //} // extern "c"
  // namespace containers
-};
+}
  // namespace sack
-};
+}
 using namespace sack::containers::link_stack;
 using namespace sack::containers::data_stack;
 using namespace sack::containers::data_list;
@@ -4461,73 +4553,7 @@ IMPORT_METHOD
  // namespace sack {
 SACK_NAMESPACE_END
 // this should become common to all libraries and programs...
- // pronounced 'kahn-struct'
-/* Defines interface for Construct API.
-   Description
-   This API is for distributed process tracking. A launching
-   program will receive notifications to cause certain events to
-   happen. Applications built for use by this execution tracking
-   program will register that they are loading while they are
-   loading, and before the application Main() is invoked. the
-   application should then call LoadComplete() once they have
-   initialized and are ready to process. This allows a
-   quick-wait to wait for the process to register that it is
-   loading, and a longer wait for process completion. Certain
-   processes may not require others to be completely loaded, but
-   maybe just loading. (Two peer processes that have to
-   coordinate together to have either one complete
-   initialization).                                              */
-/* Define the procedure call type for construct API methods. */
-#define CONSTRUCT_API CPROC
-#ifdef CONSTRUCT_SOURCE
-#define CONSTRUCT_PROC EXPORT_METHOD
-#else
-/* Library linkage specification. */
-#define CONSTRUCT_PROC IMPORT_METHOD
-#endif
-#ifdef __cplusplus
-/* Defines TASK namespace (unused?) */
-#define _TASK_NAMESPACE namespace task {
-/* Define Construct namespace. Construct is for distributed
-   process tracking project. Applications will register on-load
-   that they are loading, and should register load completed
-   when they are done loading, or exit.                         */
-#define _CONSTRUCT_NAMESPACE namespace construct {
-/* Defines TASK namespace ending.(unused?) */
-#define _TASK_NAMESPACE_END }
-/* Define Construct namespace end. Construct is for distributed
-   process tracking project. Applications will register on-load
-   that they are loading, and should register load completed
-   when they are done loading, or exit.                         */
-#define _CONSTRUCT_NAMESPACE_END }
-#else
-#define _TASK_NAMESPACE
-#define _CONSTRUCT_NAMESPACE
-#define _TASK_NAMESPACE_END
-#define _CONSTRUCT_NAMESPACE_END
-#endif
-/* Define a symbol to specify full sack::task::construct
-   namespace.                                            */
-#define CONSTRUCT_NAMESPACE SACK_NAMESPACE _TASK_NAMESPACE _CONSTRUCT_NAMESPACE
-/* Define a symbol to specify full sack::task::construct
-   namespace ending.                                     */
-#define CONSTRUCT_NAMESPACE_END _CONSTRUCT_NAMESPACE_END _TASK_NAMESPACE_END SACK_NAMESPACE_END
-	SACK_NAMESPACE
-	_TASK_NAMESPACE
-	/* Registers with message service, assuming the summoner message service is active.
-	 Provides communication methods with a task manager, so the application can notify,
-	 start has completed.   The service is ready to work.*/
-_CONSTRUCT_NAMESPACE
-/* Called to indicate that a process is done initializing and is
-   ready to process. Notifies summoner service of Loading
-   completed. If enabled, there is also a library component that
-   will run at deadstart to just confirm initializing, this
-   would actually indicate the service is now ready to serve.    */
-CONSTRUCT_PROC void CONSTRUCT_API LoadComplete( void );
-CONSTRUCT_NAMESPACE_END
-#ifdef __cplusplus
-	using namespace sack::task::construct;
-#endif
+//#include <construct.h> // pronounced 'kahn-struct'
 /*
  *  Crafted by James Buckeyne
  *  Part of SACK github.com/d3x0r/SACK
@@ -4551,7 +4577,7 @@ CONSTRUCT_NAMESPACE_END
 #endif
 #ifdef __cplusplus
 #define LOGGING_NAMESPACE namespace sack { namespace logging {
-#define LOGGING_NAMESPACE_END }; };
+#define LOGGING_NAMESPACE_END } }
 #else
 #define LOGGING_NAMESPACE
 #define LOGGING_NAMESPACE_END
@@ -4636,6 +4662,40 @@ SYSLOG_SOCKET_SYSLOGD
 SYSLOG_PROC  LOGICAL SYSLOG_API  IsBadReadPtr ( CPOINTER pointer, uintptr_t len );
 #endif
 SYSLOG_PROC  CTEXTSTR SYSLOG_API  GetPackedTime ( void );
+//  returns the millisecond of the day (since UNIX Epoch) * 256 ( << 8 )
+// the lowest 8 bits are the timezone / 15.
+// The effect of the low [7/]8 bits being the time zone is that within the same millisecond
+// UTC +0 sorts first, followed by +1, +2, ... etc until -14, -13, -12,... -1
+// the low [7/]8 bits are the signed timezone
+// (timezone could have been either be hr*60 + min (ISO TZ format)
+// or in minutes (hr*60+mn) this would only take 7 bits
+// one would think 8 bit shifts would be slightly more efficient than 7 bits.
+// and sign extension for 8 bits already exists.
+// - REVISION - timezone with hr*100 does not divide by 15 cleanly.
+//     The timezone is ( hour*60 + min ) / 15 which is a range from -56 to 48
+//     minimal representation is 7 bits (0 - 127 or -64 - 63)
+//     still keeping 8 bits for shifting, so the effective range is only -56 to 48 of -128 to 127
+// struct time_of_day {
+//    uint64_t epoch_milliseconds : 56;
+//    int64_t timezone : 8; divided by 15... hours * 60 / 15
+// }
+SYSLOG_PROC  int64_t SYSLOG_API GetTimeOfDay( void );
+// binary little endian order; somewhat
+typedef struct sack_expanded_time_tag
+{
+	uint16_t ms;
+	uint8_t sc,mn,hr,dy,mo;
+	uint16_t yr;
+	int8_t zhr, zmn;
+} SACK_TIME;
+typedef struct sack_expanded_time_tag *PSACK_TIME;
+// convert a integer time value to an expanded structure.
+SYSLOG_PROC void     SYSLOG_API ConvertTickToTime( int64_t, PSACK_TIME st );
+// convert a expanded time structure to a integer value.
+SYSLOG_PROC int64_t SYSLOG_API ConvertTimeToTick( PSACK_TIME st );
+// returns timezone as hours*100 + minutes.
+// result is often negated?
+SYSLOG_PROC  int SYSLOG_API GetTimeZone(void);
 //
 typedef void (CPROC*UserLoggingCallback)( CTEXTSTR log_string );
 SYSLOG_PROC  void SYSLOG_API  SetSystemLog ( enum syslog_types type, const void *data );
@@ -4674,12 +4734,12 @@ SYSLOG_PROC  void SYSLOG_API  SetSystemLoggingLevel ( uint32_t nLevel );
 // int result is useless... but allows this to be
 // within expressions, which with this method should be easy.
 typedef INDEX (CPROC*RealVLogFunction)(CTEXTSTR format, va_list args )
-//#if defined( __GNUC__ ) && !defined( _UNICODE )
+//#if defined( __GNUC__ )
 //	__attribute__ ((__format__ (__vprintf__, 1, 2)))
 //#endif
 	;
 typedef INDEX (CPROC*RealLogFunction)(CTEXTSTR format,...)
-#if defined( __GNUC__ ) && !defined( _UNICODE )
+#if defined( __GNUC__ )
 	__attribute__ ((__format__ (__printf__, 1, 2)))
 #endif
 	;
@@ -4942,6 +5002,7 @@ using namespace sack;
 using namespace sack::containers;
 #endif
 #endif
+#endif
 // incldue this first so we avoid a conflict.
 // hopefully this comes from sack system?
 /*
@@ -4995,6 +5056,7 @@ typedef void (CPROC*TaskOutput)(uintptr_t, PTASK_INFO task, CTEXTSTR buffer, siz
 #define LPP_OPTION_NEW_GROUP             8
 #define LPP_OPTION_NEW_CONSOLE          16
 #define LPP_OPTION_SUSPEND              32
+#define LPP_OPTION_ELEVATE              64
 SYSTEM_PROC( PTASK_INFO, LaunchPeerProgramExx )( CTEXTSTR program, CTEXTSTR path, PCTEXTSTR args
                                                , int flags
                                                , TaskOutput OutputHandler
@@ -5079,7 +5141,7 @@ SYSTEM_PROC( void, DeAttachThreadToLibraries )( LOGICAL attach );
 #define LoadFunction(l,f) LoadFunctionEx(l,f DBG_SRC )
 SYSTEM_PROC( generic_function, LoadPrivateFunctionEx )( CTEXTSTR libname, CTEXTSTR funcname DBG_PASS );
 #define LoadPrivateFunction(l,f) LoadPrivateFunctionEx(l,f DBG_SRC )
-#define OnLibraryLoad(name)	  __DefineRegistryMethod(WIDE("SACK"),_OnLibraryLoad,WIDE("system/library"),WIDE("load_event"),name WIDE("_LoadEvent"),void,(void), __LINE__)
+#define OnLibraryLoad(name)	  DefineRegistryMethod("SACK",_OnLibraryLoad,"system/library","load_event",name "_LoadEvent",void,(void), __LINE__)
 // the callback passed will be called during LoadLibrary to allow an external
 // handler to download or extract the library; the resulting library should also
 // be loaded by the callback using the standard 'LoadFunction' methods
@@ -5161,13 +5223,8 @@ typedef struct addrinfoW {
     struct addrinfoW    *ai_next;
 } ADDRINFOW;
 typedef ADDRINFOW   *PADDRINFOW;
-#ifdef UNICODE
-typedef ADDRINFOW   ADDRINFOT;
-typedef ADDRINFOW   *PADDRINFOT;
-#else
 typedef ADDRINFOA   ADDRINFOT;
 typedef ADDRINFOA   *PADDRINFOT;
-#endif
 typedef ADDRINFOA   ADDRINFO;
 typedef ADDRINFOA   *LPADDRINFO;
 #endif
@@ -5290,6 +5347,12 @@ typedef struct win_sockaddr_in SOCKADDR_IN;
 #undef StrRChr
 #undef StrStr
 #endif
+#if defined( __MAC__ )
+#  define strdup(s) StrDup(s)
+#  define strdup_free(s) Release(s)
+#else
+#  define strdup_free(s) free(s)
+#endif
 #ifdef __cplusplus
 #define SACK_MEMORY_NAMESPACE SACK_NAMESPACE namespace memory {
 #define SACK_MEMORY_NAMESPACE_END } SACK_NAMESPACE_END
@@ -5361,6 +5424,9 @@ struct critical_section_tag {
  // ID of thread waiting for this..
 	THREAD_ID dwThreadWaiting;
 #ifdef DEBUG_CRITICAL_SECTIONS
+	// these are not included without a special compile flag
+	// only required by low level deveopers who may be against
+   // undefined behavior.
 #define MAX_SECTION_LOG_QUEUE 16
 	uint32_t bCollisions ;
 	CTEXTSTR pFile[16];
@@ -5419,9 +5485,9 @@ MEM_PROC  void MEM_API  InitializeCriticalSec ( PCRITICALSECTION pcs );
    releasing memory.                                            */
 #ifdef __cplusplus
  // namespace timers
-};
+}
  // namespace sack
-};
+}
 using namespace sack::timers;
 #endif
 #ifdef __cplusplus
@@ -5438,10 +5504,10 @@ namespace memory {
 typedef struct memory_block_tag* PMEM;
 // what is an abstract name for the memory mapping handle...
 // where is a filename for the filebacking of the shared memory
-// DigSpace( WIDE(TEXT( "Picture Memory" )), WIDE(TEXT( "Picture.mem" )), 100000 );
+// DigSpace( "Picture Memory", "Picture.mem", 100000 );
 /* <combinewith sack::memory::OpenSpaceExx@CTEXTSTR@CTEXTSTR@uintptr_t@uintptr_t *@uint32_t*>
    \ \                                                                                 */
-MEM_PROC  POINTER MEM_API  OpenSpace ( CTEXTSTR pWhat, CTEXTSTR pWhere, uintptr_t *dwSize );
+MEM_PROC  POINTER MEM_API  OpenSpace ( CTEXTSTR pWhat, CTEXTSTR pWhere, size_t *dwSize );
 /* <unfinished>
    Open a shared memory region. The region may be named with a
    text string (this does not work under linux platforms, and
@@ -5480,7 +5546,7 @@ MEM_PROC  POINTER MEM_API  OpenSpace ( CTEXTSTR pWhat, CTEXTSTR pWhere, uintptr_
    2) Open a file for direct memory access, the file is loaded
    into memory by system paging routines and not any API.         */
 MEM_PROC  POINTER MEM_API  OpenSpaceExx ( CTEXTSTR pWhat, CTEXTSTR pWhere, uintptr_t address
-	, uintptr_t *dwSize, uint32_t* bCreated );
+	, size_t *dwSize, uint32_t* bCreated );
 /* <combine sack::memory::OpenSpaceExx@CTEXTSTR@CTEXTSTR@uintptr_t@uintptr_t *@uint32_t*>
    \ \                                                                             */
 #define OpenSpaceEx( what,where,address,psize) OpenSpaceExx( what,where,address,psize,NULL )
@@ -5510,7 +5576,7 @@ MEM_PROC  uintptr_t MEM_API  GetSpaceSize ( POINTER pMem );
    Parameters
    pMem :    pointer to a memory space to setup as a heap.
    dwSize :  size of the memory space pointed at by pMem.        */
-MEM_PROC  int MEM_API  InitHeap( PMEM pMem, uintptr_t dwSize );
+MEM_PROC  int MEM_API  InitHeap( PMEM pMem, size_t dwSize );
 /* Dumps all blocks into the log.
    Parameters
    pHeap :     Heap to dump. If NULL or unspecified, dump the
@@ -5539,7 +5605,7 @@ MEM_PROC  void MEM_API  DebugDumpHeapMemFile ( PMEM pHeap, CTEXTSTR pFilename );
    \ \                                                        */
 MEM_PROC  void MEM_API  DebugDumpMemFile ( CTEXTSTR pFilename );
 #ifdef __GNUC__
-MEM_PROC  POINTER MEM_API  HeapAllocateAlignedEx ( PMEM pHeap, uintptr_t dwSize, uint16_t alignment DBG_PASS ) __attribute__( (malloc) );
+MEM_PROC  POINTER MEM_API  HeapAllocateAlignedEx ( PMEM pHeap, size_t dwSize, uint16_t alignment DBG_PASS ) __attribute__( (malloc) );
 MEM_PROC  POINTER MEM_API  HeapAllocateEx ( PMEM pHeap, uintptr_t nSize DBG_PASS ) __attribute__((malloc));
 MEM_PROC  POINTER MEM_API  AllocateEx ( uintptr_t nSize DBG_PASS ) __attribute__((malloc));
 #else
@@ -5863,11 +5929,11 @@ MEM_PROC  uint64_t MEM_API  LockedExchange64 ( volatile uint64_t* p, uint64_t va
 /* A multi-processor safe increment of a variable.
    Parameters
    p :  pointer to a 32 bit value to increment.    */
-MEM_PROC  uint32_t MEM_API  LockedIncrement ( uint32_t* p );
+MEM_PROC  uint32_t MEM_API  LockedIncrement ( volatile uint32_t* p );
 /* Does a multi-processor safe decrement on a variable.
    Parameters
    p :  pointer to a 32 bit value to decrement.         */
-MEM_PROC  uint32_t MEM_API  LockedDecrement ( uint32_t* p );
+MEM_PROC  uint32_t MEM_API  LockedDecrement ( volatile uint32_t* p );
 #ifdef __cplusplus
 // like also __if_assembly__
 //extern "C" {
@@ -5928,9 +5994,6 @@ MEM_PROC  int MEM_API  MemCmp ( CPOINTER pOne, CPOINTER pTwo, size_t sz );
 	/* nothing.
    does nothing, returns nothing. */
 //#define memnop(mem,sz,comment)
-#ifdef __cplusplus
-//};
-#endif
 /* Compares two strings. Must match exactly.
    Parameters
    s1 :  string to compare
@@ -6086,7 +6149,7 @@ MEM_PROC  int MEM_API  StrCmpEx ( CTEXTSTR s1, CTEXTSTR s2, INDEX maxlen );
    The beginning of the string in s1 that matches s2.
    Example
    <code lang="c++">
-   TEXTCHAR const *found = StrStr( WIDE( "look in this string" ), WIDE( "in" ) );
+   TEXTCHAR const *found = StrStr( "look in this string", "in" );
                                                ^returns a pointer to here.
    </code>                                                                        */
 MEM_PROC  CTEXTSTR MEM_API  StrStr ( CTEXTSTR s1, CTEXTSTR s2 );
@@ -6102,8 +6165,8 @@ MEM_PROC  CTEXTSTR MEM_API  StrStr ( CTEXTSTR s1, CTEXTSTR s2 );
    The beginning of the string in s1 that matches s2.
    Example
    <code>
-   TEXTCHAR *writable_string = StrDup( WIDE( "look in this string" ) );
-   TEXTCHAR *found = StrStr( writable_string, WIDE( "in" ) );
+   TEXTCHAR *writable_string = StrDup( "look in this string" );
+   TEXTCHAR *found = StrStr( writable_string, "in" );
    // returns a pointer to 'in' in the writable string, which can then be modified.
    </code>                                                                          */
 MEM_PROC  TEXTSTR MEM_API  StrStr ( TEXTSTR s1, CTEXTSTR s2 );
@@ -6200,9 +6263,9 @@ MEM_PROC  int MEM_API  PequeMessage ( struct transport_queue_tag *queue, POINTER
 //------------------------------------------------------------------------
 #ifdef __cplusplus
  // namespace memory
-};
+}
  // namespace sack
-};
+}
 using namespace sack::memory;
 #if defined( _DEBUG ) || defined( _DEBUG_INFO )
 /*
@@ -6240,6 +6303,8 @@ inline void operator delete (void * p)
 #endif
 #endif
 #endif
+#ifdef __LINUX__
+#endif
 #ifndef _TIMER_NAMESPACE
 #ifdef __cplusplus
 #define _TIMER_NAMESPACE namespace timers {
@@ -6255,10 +6320,17 @@ inline void operator delete (void * p)
 #endif
 // this is a method replacement to use PIPEs instead of SEMAPHORES
 // replacement code only affects linux.
-#if defined( __QNX__ ) || defined( __MAC__) || defined( __LINUX__ ) || defined( __ANDROID__ )
-#  define USE_PIPE_SEMS
+#if defined( __QNX__ ) || defined( __MAC__) || defined( __LINUX__ )
+#  if defined( __ANDROID__ ) || defined( EMSCRIPTEN ) || defined( __MAC__ )
+// android > 21 can use pthread_mutex_timedop
+#    define USE_PIPE_SEMS
+#  else
+//   Default behavior is to use pthread_mutex_timedlock for wakeable sleeps.
 // no semtimedop; no semctl, etc
-//#include <sys/sem.h>
+//#    include <sys/sem.h>
+//originally used semctl; but that consumes system resources that are not
+//cleaned up when the process exits.
+#endif
 #endif
 #ifdef USE_PIPE_SEMS
 #  define _NO_SEMTIMEDOP_
@@ -6694,50 +6766,32 @@ using namespace sack::timers;
 //
 #ifndef MAXPATH
 // windef.h has MAX_PATH
-# define MAXPATH MAX_PATH
+#  define MAXPATH MAX_PATH
+#  if (!MAXPATH)
+#    undef MAXPATH
+#    define MAXPATH 256
+#  endif
 #endif
 #ifndef PATH_MAX
 // sometimes PATH_MAX is what's used, well it's should be MAXPATH which is MAX_PATH
 # define PATH_MAX MAXPATH
 #endif
-#ifdef _UNICODE
-#  ifdef _WIN32
-#    ifdef CONSOLE_SHELL
-    // in order to get wide characters from the commandline we have to use the GetCommandLineW function, convert it to utf8 for internal usage.
-#      define SaneWinMain(a,b) int main( int a, char **argv_real ) { char *tmp; TEXTCHAR **b; ParseIntoArgs( GetCommandLineW(), &a, &b ); Deallocate( char*, tmp ); {
-	//int n; TEXTCHAR **b; b = NewArray( TEXTSTR, a + 1 ); for( n = 0; n < a; n++ ) b[n] = DupCharToText( argv_real[n] ); b[n] = NULL; {
-#      define EndSaneWinMain() } }
-#    else
-#      define SaneWinMain(a,b) int APIENTRY WinMain( HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdShow ) { char *tmp; int a; TEXTCHAR **b; ParseIntoArgs( tmp = WcharConvert( GetCommandLineW() ), &a, &b ); Deallocate( char*, tmp ); {
-#      define EndSaneWinMain() } }
-#    endif
+#ifdef _WIN32
+#  ifdef CONSOLE_SHELL
+ // in order to get wide characters from the commandline we have to use the GetCommandLineW function, convert it to utf8 for internal usage.
+#    define SaneWinMain(a,b) int main( int a, char **argv_real ) { char *tmp; TEXTCHAR **b; ParseIntoArgs( tmp = WcharConvert( GetCommandLineW() ), &a, &b ); Deallocate( char*, tmp ); {
+#    define EndSaneWinMain() } }
 #  else
-#    if defined( __ANDROID__ ) && !defined( ANDROID_CONSOLE_UTIL )
-#      define SaneWinMain(a,b) int SACK_Main( int a, char **b )
-#      define EndSaneWinMain()
-#    else
-#      define SaneWinMain(a,b) int main( int a, char **argv_real ) { int n; TEXTCHAR **b; b = NewArray( TEXTSTR, a + 1 ); for( n = 0; n < a; n++ ) b[n] = DupCharToText( argv_real[n] ); b[n] = NULL; {
-#      define EndSaneWinMain() } }
-#    endif
+#    define SaneWinMain(a,b) int APIENTRY WinMain( HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdShow ) { int a; char *tmp; TEXTCHAR **b; ParseIntoArgs( tmp = WcharConvert( GetCommandLineW() ), &a, &b ); {
+#    define EndSaneWinMain() } }
 #  endif
 #else
-#  ifdef _WIN32
-#    ifdef CONSOLE_SHELL
-// in order to get wide characters from the commandline we have to use the GetCommandLineW function, convert it to utf8 for internal usage.
-#      define SaneWinMain(a,b) int main( int a, char **argv_real ) { char *tmp; TEXTCHAR **b; ParseIntoArgs( tmp = WcharConvert( GetCommandLineW() ), &a, &b ); Deallocate( char*, tmp ); {
-#      define EndSaneWinMain() } }
-#    else
-#      define SaneWinMain(a,b) int APIENTRY WinMain( HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdShow ) { int a; char *tmp; TEXTCHAR **b; ParseIntoArgs( tmp = WcharConvert( GetCommandLineW() ), &a, &b ); {
-#      define EndSaneWinMain() } }
-#    endif
+#  if defined( __ANDROID__ ) && !defined( ANDROID_CONSOLE_UTIL )
+#    define SaneWinMain(a,b) int SACK_Main( int a, char **b )
+#    define EndSaneWinMain()
 #  else
-#    if defined( __ANDROID__ ) && !defined( ANDROID_CONSOLE_UTIL )
-#      define SaneWinMain(a,b) int SACK_Main( int a, char **b )
-#      define EndSaneWinMain()
-#    else
-#      define SaneWinMain(a,b) int main( int a, char **b ) { char **argv_real = b; {
-#      define EndSaneWinMain() } }
-#    endif
+#    define SaneWinMain(a,b) int main( int a, char **b ) { char **argv_real = b; {
+#    define EndSaneWinMain() } }
 #  endif
 #endif
 //  these are rude defines overloading otherwise very practical types
@@ -6813,46 +6867,16 @@ using namespace sack::timers;
 #else
 #endif
 #  ifdef _MSC_VER
-#    define SUFFER_WITH_NO_SNPRINTF
-#    ifndef SUFFER_WITH_NO_SNPRINTF
-#      define vnsprintf protable_vsnprintf
-//   this one gives deprication warnings
-//   #    define vsnprintf _vsnprintf
-//   this one doesn't work to measure strings
-//   #    define vsnprintf(buf,len,format,args) _vsnprintf_s(buf,len,(len)/sizeof(TEXTCHAR),format,args)
-//   this one doesn't macro well, and doesnt' measure strings
-//  (SUCCEEDED(StringCbVPrintf( buf, len, format, args ))?StrLen(buf):-1)
-#      define snprintf portable_snprintf
-//   this one gives deprication warnings
-//   #    define snprintf _snprintf
-//   this one doesn't work to measure strings
-//   #    define snprintf(buf,len,format,...) _snprintf_s(buf,len,(len)/sizeof(TEXTCHAR),format,##__VA_ARGS__)
-//   this one doesn't macro well, and doesnt' measure strings
-//   (SUCCEEDED(StringCbPrintf( buf, len, format,##__VA_ARGS__ ))?StrLen(buf):-1)
-// make sure this is off, cause we really don't, and have to include the following
-#      undef HAVE_SNPRINTF
- // define this anyhow so we can avoid name collisions
-#      define PREFER_PORTABLE_SNPRINTF
-#      ifdef SACK_CORE_BUILD
-#        include <../src/snprintf_2.2/snprintf.h>
-#      else
-#        include <snprintf-2.2/snprintf.h>
- // SACK_CORE_BUILD
-#      endif
- // SUFFER_WITH_WARNININGS
+#    define snprintf _snprintf
+#    define vsnprintf _vsnprintf
+#    if defined( _UNICODE )
+#      define tnprintf _snwprintf
+#      define vtnprintf _vsnwprintf
 #    else
-#      define snprintf _snprintf
-#      define vsnprintf _vsnprintf
-#      if defined( _UNICODE )
-#        define tnprintf _snwprintf
-#        define vtnprintf _vsnwprintf
-#      else
-#        define tnprintf _snprintf
-#        define vtnprintf _vsnprintf
-#      endif
-#    define snwprintf _snwprintf
-// suffer_with_warnings
+#      define tnprintf _snprintf
+#      define vtnprintf _vsnprintf
 #    endif
+#    define snwprintf _snwprintf
 #    if defined( _UNICODE ) && !defined( NO_UNICODE_C )
 #    define tscanf swscanf_s
 #    else
@@ -6907,6 +6931,1279 @@ using namespace sack::timers;
 #  endif
 #endif
 #endif
+#ifndef NETWORK_HEADER_INCLUDED
+#define NETWORK_HEADER_INCLUDED
+#ifdef NETWORK_SOURCE
+#define NETWORK_PROC(type,name) EXPORT_METHOD type CPROC name
+#else
+#define NETWORK_PROC(type,name) IMPORT_METHOD type CPROC name
+#endif
+#ifdef __cplusplus
+#define _NETWORK_NAMESPACE  namespace network {
+#define _NETWORK_NAMESPACE_END }
+#define _TCP_NAMESPACE  namespace tcp {
+#define _TCP_NAMESPACE_END }
+#define USE_TCP_NAMESPACE using namespace tcp;
+#define _UDP_NAMESPACE  namespace udp {
+#define _UDP_NAMESPACE_END }
+#define USE_UDP_NAMESPACE using namespace tcp;
+#else
+#define _NETWORK_NAMESPACE
+#define _NETWORK_NAMESPACE_END
+#define _TCP_NAMESPACE
+#define _TCP_NAMESPACE_END
+#define _UDP_NAMESPACE
+#define _UDP_NAMESPACE_END
+#define USE_TCP_NAMESPACE
+#define USE_UDP_NAMESPACE
+#endif
+#define SACK_NETWORK_NAMESPACE  SACK_NAMESPACE _NETWORK_NAMESPACE
+#define SACK_NETWORK_NAMESPACE_END _NETWORK_NAMESPACE_END SACK_NAMESPACE_END
+#define SACK_NETWORK_TCP_NAMESPACE  SACK_NAMESPACE _NETWORK_NAMESPACE _TCP_NAMESPACE
+#define SACK_NETWORK_TCP_NAMESPACE_END _TCP_NAMESPACE_END _NETWORK_NAMESPACE_END SACK_NAMESPACE_END
+#define SACK_NETWORK_UDP_NAMESPACE  SACK_NAMESPACE _NETWORK_NAMESPACE _UDP_NAMESPACE
+#define SACK_NETWORK_UDP_NAMESPACE_END _UDP_NAMESPACE_END _NETWORK_NAMESPACE_END SACK_NAMESPACE_END
+SACK_NAMESPACE
+	/* Event based networking interface.
+	   Example
+	   \Example One : A simple client side application. Reads
+	   standard input, and writes it to a server it connects to. Read
+	   the network and write as standard output.
+	   <code lang="c++">
+	   \#include \<network.h\>
+	   </code>
+	   <code>
+	   \#include \<logging.h\>
+	   \#include \<sharemem.h\>
+	   </code>
+	   <code lang="c++">
+	   void CPROC ReadComplete( PCLIENT pc, void *bufptr, int sz )
+	   {
+	      char *buf = (char*)bufptr;
+	       if( buf )
+	       {
+	           buf[sz] = 0;
+	           printf( "%s", buf );
+	           fflush( stdout );
+	       }
+	       else
+	       {
+	           buf = (char*)Allocate( 4097 );
+	           //SendTCP( pc, "Yes, I've connected", 12 );
+	       }
+	       ReadTCP( pc, buf, 4096 );
+	   }
+	   PCLIENT pc_user;
+	   void CPROC Closed( PCLIENT pc )
+	   {
+	      pc_user = NULL;
+	   }
+	   int main( int argc, char** argv )
+	   {
+	       SOCKADDR *sa;
+	       if( argc \< 2 )
+	       {
+	           printf( "usage: %s \<Telnet IP[:port]\>\\n", argv[0] );
+	           return 0;
+	       }
+	       SystemLog( "Starting the network" );
+	       NetworkStart();
+	       SystemLog( "Started the network" );
+	       sa = CreateSockAddress( argv[1], 23 );
+	       pc_user = OpenTCPClientAddrEx( sa, ReadComplete, Closed, NULL, 0 );
+	       if( !pc_user )
+	       {
+	           SystemLog( "Failed to open some port as telnet" );
+	           printf( "failed to open %s%s\\n", argv[1], strchr(argv[1],':')?"":":telnet[23]" );
+	           return 0;
+	       }
+	      //SendTCP( pc_user, "Some data here...", 12 );
+	       while( pc_user )
+	       {
+	           char buf[256];
+	           if( !fgets( buf, 256, stdin ) )
+	           {
+	               RemoveClient( pc_user );
+	               return 0;
+	           }
+	           SendTCP( pc_user, buf, strlen( buf ) );
+	       }
+	       return -1;
+	   }
+	   </code>
+	   \Example Two : A server application, opens a socket that it
+	   accepts connections on. Reads the socket, and writes the
+	   information it reads back to the socket as an echo.
+	   <code lang="c++">
+	   \#include \<stdhdrs.h\>
+	   \#include \<sharemem.h\>
+	   \#include \<timers.h\>
+	   \#include \<network.h\>
+	   void CPROC ServerRecieve( PCLIENT pc, POINTER buf, int size )
+	   {
+	       //int bytes;
+	       if( !buf )
+	       {
+	           buf = Allocate( 4096 );
+	           //SendTCP( pc, (void*)"Hi, welccome to...", 15 );
+	       }
+	       //else
+	           //SendTCP( pc, buf, size );
+	       // test for waitread support...
+	       // read will not result until the data is read.
+	       //bytes = WaitReadTCP( pc, buf, 4096 );
+	       //if( bytes \> 0 )
+	       //   SendTCP( pc, buf, bytes );
+	       ReadTCP( pc, buf, 4095 );
+	       // buffer does not have anything in it....
+	   }
+	   void CPROC ClientConnected( PCLIENT pListen, PCLIENT pNew )
+	   {
+	       SetNetworkReadComplete( pNew, ServerRecieve );
+	   }
+	   int main( int argc, char **argv )
+	   {
+	       PCLIENT pcListen;
+	       SOCKADDR *port;
+	       if( argc \< 2 )
+	       {
+	           printf( "usage: %s \<listen port\> (defaulting to telnet)\\n", argv[0] );
+	           port = CreateSockAddress( "localhost:23", 23 );
+	       }
+	       else
+	           port = CreateSockAddress( argv[1], 23 );
+	       NetworkStart();
+	       pcListen = OpenTCPListenerAddrEx( port, ClientConnected );
+	       if(pcListen)
+	           while(1) WakeableSleep( SLEEP_FOREVER );
+	       else
+	           printf( "Failed to listen on port %s\\n", argv[1] );
+	       return 0;
+	   }
+	   </code>                                                                                    */
+	_NETWORK_NAMESPACE
+//#ifndef CLIENT_DEFINED
+typedef struct NetworkClient *PCLIENT;
+//typedef struct Client
+//{
+//   unsigned char Private_Structure_information_here;
+//}CLIENT, *PCLIENT;
+//#endif
+NETWORK_PROC( CTEXTSTR, GetSystemName )( void );
+NETWORK_PROC( PCLIENT, NetworkLockEx )( PCLIENT pc, int readWrite DBG_PASS );
+NETWORK_PROC( void, NetworkUnlockEx )( PCLIENT pc, int readWrite DBG_PASS );
+/* <combine sack::network::NetworkLockEx@PCLIENT pc>
+   \ \                                               */
+#define NetworkLock(pc,rw) NetworkLockEx( pc,rw DBG_SRC )
+/* <combine sack::network::NetworkUnlockEx@PCLIENT pc>
+   \ \                                                 */
+#define NetworkUnlock(pc,rw) NetworkUnlockEx( pc,rw DBG_SRC )
+typedef void (CPROC*cReadComplete)(PCLIENT, POINTER, size_t );
+typedef void (CPROC*cReadCompleteEx)(PCLIENT, POINTER, size_t, SOCKADDR * );
+typedef void (CPROC*cCloseCallback)(PCLIENT);
+typedef void (CPROC*cWriteComplete)(PCLIENT );
+typedef void (CPROC*cNotifyCallback)(PCLIENT server, PCLIENT newClient);
+typedef void (CPROC*cConnectCallback)(PCLIENT, int);
+typedef void (CPROC*cppReadComplete)(uintptr_t, POINTER, size_t );
+typedef void (CPROC*cppReadCompleteEx)(uintptr_t,POINTER, size_t, SOCKADDR * );
+typedef void (CPROC*cppCloseCallback)(uintptr_t);
+typedef void (CPROC*cppWriteComplete)(uintptr_t );
+typedef void (CPROC*cppNotifyCallback)(uintptr_t, PCLIENT newClient);
+typedef void (CPROC*cppConnectCallback)(uintptr_t, int);
+enum SackNetworkErrorIdentifier {
+	SACK_NETWORK_ERROR_,
+ // error during control information exchange over TLS
+	SACK_NETWORK_ERROR_SSL_HANDSHAKE,
+ // error after first packet.
+	SACK_NETWORK_ERROR_SSL_HANDSHAKE_2,
+ // error verifying validity of certificate chain from server.
+	SACK_NETWORK_ERROR_SSL_CERTCHAIN_FAIL,
+ // other ssl error
+	SACK_NETWORK_ERROR_SSL_FAIL,
+ //
+	SACK_NETWORK_ERROR_HTTP_CHUNK,
+ // command parsing resulted in invalid command.  (HTTPS request to HTTP)
+	SACK_NETWORK_ERROR_HTTP_UNSUPPORTED,
+};
+typedef void (CPROC*cErrorCallback)(uintptr_t psvError, PCLIENT pc, enum SackNetworkErrorIdentifier error, ... );
+NETWORK_PROC( void, SetNetworkWriteComplete )( PCLIENT, cWriteComplete );
+#ifdef __cplusplus
+/* <combine sack::network::SetNetworkWriteComplete@PCLIENT@cWriteComplete>
+   \ \                                                                     */
+NETWORK_PROC( void, SetCPPNetworkWriteComplete )( PCLIENT, cppWriteComplete, uintptr_t );
+#endif
+/* <combine sack::network::SetNetworkWriteComplete@PCLIENT@cWriteComplete>
+   \ \                                                                     */
+#define SetWriteCallback SetNetworkWriteComplete
+NETWORK_PROC( void, SetNetworkReadComplete )( PCLIENT, cReadComplete );
+#ifdef __cplusplus
+/* <combine sack::network::SetNetworkReadComplete@PCLIENT@cReadComplete>
+   \ \                                                                   */
+NETWORK_PROC( void, SetCPPNetworkReadComplete )( PCLIENT, cppReadComplete, uintptr_t );
+#endif
+/* <combine sack::network::SetNetworkReadComplete@PCLIENT@cReadComplete>
+   \ \                                                                   */
+#define SetReadCallback SetNetworkReadComplete
+NETWORK_PROC( void, SetNetworkCloseCallback )( PCLIENT, cCloseCallback );
+#ifdef __cplusplus
+/* <combine sack::network::SetNetworkCloseCallback@PCLIENT@cCloseCallback>
+   \ \                                                                     */
+NETWORK_PROC( void, SetCPPNetworkCloseCallback )( PCLIENT, cppCloseCallback, uintptr_t );
+#endif
+/* <combine sack::network::SetNetworkCloseCallback@PCLIENT@cCloseCallback>
+   \ \                                                                     */
+#define SetCloseCallback SetNetworkCloseCallback
+/* Sets an error event callback which is triggered during low level (SSL)
+   operations.  Error code passed to callback will give more information.
+   Parameters
+   pc :              socket to set event handler on
+   callback :        Address of error handling callback.
+   psvUser :         data passed to callback for application purposes.
+*/
+NETWORK_PROC( void, SetNetworkErrorCallback )(PCLIENT pc, cErrorCallback callback, uintptr_t psvUser );
+/*
+   Trigger error callback with specified error code (meta code like http.c can trigger this(?))
+   Parameters
+   pc :              socket to set event handler on
+   code :        Address of error handling callback.
+ */
+NETWORK_PROC( void, TriggerNetworkErrorCallback )(PCLIENT pc, enum SackNetworkErrorIdentifier error );
+ // wwords is BYTES and wClients=16 is defaulted to 16
+#ifdef __LINUX__
+NETWORK_PROC( LOGICAL, NetworkWait )(POINTER unused,uint32_t wClients,int wUserData);
+#else
+NETWORK_PROC( LOGICAL, NetworkWait )(HWND hWndNotify,uint32_t wClients,int wUserData);
+#endif
+/* <combine sack::network::NetworkWait@HWND@uint16_t@int>
+   \ \                                               */
+#define NetworkStart() NetworkWait( NULL, 0, 0 )
+ // returns true if network layer still active...
+NETWORK_PROC( LOGICAL, NetworkAlive )( void );
+/* Shutdown these network services, stop the network thread, and
+   close all sockets open, releasing all internal resources.
+   Parameters
+   None.                                                         */
+NETWORK_PROC( int, NetworkQuit )(void);
+// preferred method is to call Idle(); if in doubt.
+//NETWORK_PROC( int, ProcessNetworkMessages )( void );
+// dwIP would be for 1.2.3.4  (0x01020304 - memory 04 03 02 01) - host order
+// VERY RARE!
+NETWORK_PROC( SOCKADDR *, CreateAddress_hton )( uint32_t dwIP,uint16_t nHisPort);
+// dwIP would be for 1.2.3.4  (0x04030201 - memory 01 02 03 04) - network order
+#ifndef WIN32
+NETWORK_PROC( SOCKADDR *, CreateUnixAddress )( CTEXTSTR path );
+#endif
+/* obsolete */
+NETWORK_PROC( SOCKADDR *, CreateAddress )( uint32_t dwIP,uint16_t nHisPort);
+/* obsolete */
+NETWORK_PROC( SOCKADDR *, SetAddressPort )( SOCKADDR *pAddr, uint16_t nDefaultPort );
+/* obsolete */
+NETWORK_PROC( SOCKADDR *, SetNonDefaultPort )( SOCKADDR *pAddr, uint16_t nDefaultPort );
+/*
+ * this is the preferred method to create an address
+ * name may be "* / *" with a slash, then the address result will be a unix socket (if supported)
+ * name may have an options ":port" port number associated, if there is no port, then the default
+ * port is used.
+ *
+ */
+NETWORK_PROC( SOCKADDR *, CreateSockAddress )( CTEXTSTR name, uint16_t nDefaultPort );
+/*
+ * set (*data) and (*datalen) to a binary buffer representation of the sockete address.
+ */
+NETWORK_PROC( void, GetNetworkAddressBinary )( SOCKADDR *addr, uint8_t **data, size_t *datalen );
+/*
+ * create a socket address form data and datalen binary buffer representation of the sockete address.
+ */
+NETWORK_PROC( SOCKADDR *, MakeNetworkAddressFromBinary )( uintptr_t *data, size_t datalen );
+NETWORK_PROC( SOCKADDR *, CreateRemote )( CTEXTSTR lpName,uint16_t nHisPort);
+NETWORK_PROC( SOCKADDR *, CreateLocal )(uint16_t nMyPort);
+NETWORK_PROC( int, GetAddressParts )( SOCKADDR *pAddr, uint32_t *pdwIP, uint16_t *pwPort );
+ // release a socket resource that has been created by an above routine
+NETWORK_PROC( void, ReleaseAddress )(SOCKADDR *lpsaAddr);
+// result with TRUE if equal, else FALSE
+NETWORK_PROC( LOGICAL, CompareAddress )(SOCKADDR *sa1, SOCKADDR *sa2 );
+#define SA_COMPARE_FULL 1
+#define SA_COMPARE_IP   0
+NETWORK_PROC( LOGICAL, CompareAddressEx )(SOCKADDR *sa1, SOCKADDR *sa2, int method );
+/*
+ * compare this address to see if it is any of my IPv4 interfaces
+ */
+NETWORK_PROC( LOGICAL, IsThisAddressMe )( SOCKADDR *addr, uint16_t myport );
+/*
+ *  Get the list of SOCKADDR addresses that are on this box (for this name)
+ */
+NETWORK_PROC( PLIST, GetLocalAddresses )( void );
+/*
+ * Return the text of a socket's IP address
+ */
+NETWORK_PROC( const char *, GetAddrName )( SOCKADDR *addr );
+/*
+ * Return the numeric form of the address (might have been created by name).
+ */
+NETWORK_PROC( const char *, GetAddrString )(SOCKADDR *addr);
+/*
+ * test an address to see if it is v6 (switch connect From behavior at application level)
+ */
+NETWORK_PROC( LOGICAL, IsAddressV6 )( SOCKADDR *addr );
+/*
+ *  Duplicate a sockaddr appropriately for the specified network.
+ *  SOCKADDR has in(near) it the size of the address block, so this
+ * can safely duplicate the the right amount of memory.
+ */
+ // return a copy of this address...
+NETWORK_PROC( SOCKADDR *, DuplicateAddressEx )( SOCKADDR *pAddr DBG_PASS );
+#define DuplicateAddress(a) DuplicateAddressEx( a DBG_SRC )
+/* Transmission Control Protocol connection methods. This
+   controls opening sockets that are based on TCP.        */
+_TCP_NAMESPACE
+#ifdef __cplusplus
+/* <combine sack::network::tcp::OpenTCPListenerAddrEx@SOCKADDR *@cNotifyCallback>
+   \ \                                                                            */
+NETWORK_PROC( PCLIENT, CPPOpenTCPListenerAddrExx )( SOCKADDR *, cppNotifyCallback NotifyCallback, uintptr_t psvConnect DBG_PASS );
+#define CPPOpenTCPListenerAddrEx(a,b,c)  CPPOpenTCPListenerAddrExx(a,b,c DBG_SRC )
+#endif
+/* Opens a TCP socket which listens for connections. Other TCP
+   sockets may be connected to this one once it has been
+   created.
+   Parameters
+   Address :         address to serve at. See
+                     CreateSockAddress().
+   Port :            specified the port to listen at. This family
+                     that takes just a port FAILS if there are
+                     multiple network interfaces and or virtual
+                     private networks.
+   NotifyCallback :  user callback which will be invoked when a
+                     new connection to the TCP server has been
+                     made.
+   Returns
+   NULL if no clients available, or if address bind on listen
+   side fails.
+   otherwise is a valid network connection to send and receive
+   UDP data on.
+   The read_complete callback, if specified, will be called,
+   with a NULL pointer and 0 size, before the connect complete.   */
+NETWORK_PROC( PCLIENT, OpenTCPListenerAddrExx )( SOCKADDR *, cNotifyCallback NotifyCallback DBG_PASS );
+#define OpenTCPListenerAddrEx(sa,ca) OpenTCPListenerAddrExx( sa, ca DBG_SRC )
+NETWORK_PROC( PCLIENT, OpenTCPListenerAddr_v2d )(SOCKADDR *, cNotifyCallback NotifyCallback, LOGICAL ready DBG_PASS);
+#define OpenTCPListenerAddr_v2(sa,ca,ready) OpenTCPListenerAddr_v2d( sa, ca,ready DBG_SRC )
+/* <combine sack::network::tcp::OpenTCPListenerAddrEx@SOCKADDR *@cNotifyCallback>
+   \ \                                                                            */
+#define OpenTCPListenerAddr( pAddr ) OpenTCPListenerAddrExxx( paddr, NULL, FALSE DBG_SRC );
+#ifdef __cplusplus
+/* <combine sack::network::tcp::OpenTCPListenerEx@uint16_t@cNotifyCallback>
+   \ \                                                                 */
+NETWORK_PROC( PCLIENT, CPPOpenTCPListenerExx )( uint16_t wPort, cppNotifyCallback NotifyCallback, uintptr_t psvConnect DBG_PASS );
+#define CPPOpenTCPListenerEx(a,b,c) CPPOpenTCPListenerExx(a,b,c DBG_SRC )
+#endif
+/* <combine sack::network::tcp::OpenTCPListenerAddrEx@SOCKADDR *@cNotifyCallback>
+   \ \                                                                            */
+NETWORK_PROC( PCLIENT, OpenTCPListener_v2d )(uint16_t wPort, cNotifyCallback NotifyCallback, LOGICAL waitForReady DBG_PASS);
+#define OpenTCPListener_v2(a,b) OpenTCPListener_v2d(a,b,FALSE DBG_SRC )
+NETWORK_PROC( PCLIENT, CPPOpenTCPListenerAddr_v2d )(SOCKADDR *pAddr
+	, cppNotifyCallback NotifyCallback
+	, uintptr_t psvConnect
+	, LOGICAL waitForReady
+	DBG_PASS);
+#define CPPOpenTCPListenerAddr_v2(a,b,c,d)  CPPOpenTCPListenerAddr_v2d(a,b,c,d DBG_SRC )
+/* <combine sack::network::tcp::OpenTCPListenerAddrEx@SOCKADDR *@cNotifyCallback>
+   \ \                                                                            */
+NETWORK_PROC( PCLIENT, OpenTCPListenerExx )( uint16_t wPort, cNotifyCallback NotifyCallback DBG_PASS );
+#define OpenTCPListenerEx(a,b) OpenTCPListenerExx(a,b DBG_SRC )
+/* <combine sack::network::tcp::OpenTCPListenerEx@uint16_t@cNotifyCallback>
+   \ \                                                                 */
+#define OpenTCPListener( wPort )    OpenTCPListenerEx( wPort, NULL )
+/*
+  When opening a tcp listener socket, the socket ends up 'ready' and
+  able to send events before the application may be finished.
+  Adding an option to
+ */
+NETWORK_PROC( void, SetNetworkListenerReady )( PCLIENT pListen );
+/* <combine sack::network::tcp::OpenTCPListener>
+   \ \                                           */
+#define OpenTCPServer OpenTCPListener
+/* <combine sack::network::tcp::OpenTCPListenerEx@uint16_t@cNotifyCallback>
+   \ \                                                                 */
+#define OpenTCPServerEx OpenTCPListenerEx
+/* <combine sack::network::tcp::OpenTCPListenerAddrEx@SOCKADDR *@cNotifyCallback>
+   \ \                                                                            */
+#define OpenTCPServerAddr OpenTCPListenerAddr
+/* <combine sack::network::tcp::OpenTCPListenerEx@uint16_t@cNotifyCallback>
+   \ \                                                                 */
+#define OpenTCPServerAddrEx OpenTCPListenerAddrEx
+#define OPEN_TCP_FLAG_DELAY_CONNECT 1
+#ifdef __cplusplus
+/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
+   \ \                                                                                                                        */
+NETWORK_PROC( PCLIENT, CPPOpenTCPClientAddrExxx )(SOCKADDR *lpAddr,
+																  cppReadComplete  pReadComplete, uintptr_t,
+																  cppCloseCallback CloseCallback, uintptr_t,
+																  cppWriteComplete WriteComplete, uintptr_t,
+																  cppConnectCallback pConnectComplete,  uintptr_t, int DBG_PASS );
+#define CPPOpenTCPClientAddrExx(a,b,c,d,e,f,g,h,i,j) CPPOpenTCPClientAddrExxx(a,b,c,d,e,f,g,h,i,j DBG_SRC )
+#endif
+NETWORK_PROC( PCLIENT, OpenTCPClientAddrFromAddrEx )( SOCKADDR *lpAddr, SOCKADDR *pFromAddr
+                                                     , cReadComplete     pReadComplete
+                                                     , cCloseCallback    CloseCallback
+                                                     , cWriteComplete    WriteComplete
+                                                     , cConnectCallback  pConnectComplete
+                                                     , int flags
+                                                     DBG_PASS
+                                                     );
+#define OpenTCPClientAddrFromAddr( a,f,r,cl,wr,cc ) OpenTCPClientAddrFromAddrEx( a,f,r,cl,wr,cc, 0 DBG_SRC )
+NETWORK_PROC( PCLIENT, OpenTCPClientAddrFromEx )( SOCKADDR *lpAddr, int port
+                                                , cReadComplete     pReadComplete
+                                                , cCloseCallback    CloseCallback
+                                                , cWriteComplete    WriteComplete
+                                                , cConnectCallback  pConnectComplete
+                                                , int flags
+                                                DBG_PASS
+                                                );
+#define OpenTCPClientAddrFrom( a,f,r,cl,wr,cc ) OpenTCPClientAddrFromEx( a,f,r,cl,wr,cc,0 DBG_SRC )
+/* Opens a socket which connects to an already existing,
+   listening, socket.
+   Parameters
+   lpAddr :            _nt_
+   lpName :            lpName and wPort are passed to
+                       CreateSockAddress, and that address is
+                       passed as a lpAddr.
+   wPort :             lpName and wPort are passed to
+                       CreateSockAddress, and that address is
+                       passed as a lpAddr.
+   pReadComplete :     user callback which is invoked when a
+                       buffer now contains data.
+   CloseCallback :     user callback when this socket is closed.
+   WriteComplete :     user callback which is invoked when a
+                       write operation completes.
+   pConnectComplete :  user callback which is called when this
+                       client connects. The callback gets this
+                       network connection as the first parameter.
+   Remarks
+   WriteComplete is often unused, unless you are using bMsg
+   option on do
+   Returns
+   NULL if no clients available, or if address bind on listen
+   side fails.
+   otherwise is a valid network connection to send and receive
+   UDP data on.
+   The read_complete callback, if specified, will be called,
+   with a NULL pointer and 0 size, before the connect complete.   */
+NETWORK_PROC( PCLIENT, OpenTCPClientAddrExxx )(SOCKADDR *lpAddr,
+                                               cReadComplete  pReadComplete,
+                                               cCloseCallback CloseCallback,
+                                               cWriteComplete WriteComplete,
+                                               cConnectCallback pConnectComplete,
+                                               int flags
+                                               DBG_PASS );
+/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
+   \ \                                                                                                                        */
+#define OpenTCPClientAddrExx(a,r,clo,w,con) OpenTCPClientAddrExxx( a,r,clo,w,con,0 DBG_SRC )
+#ifdef __cplusplus
+/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
+   \ \                                                                                                                        */
+NETWORK_PROC( PCLIENT, CPPOpenTCPClientAddrEx )(SOCKADDR *
+                                               , cppReadComplete, uintptr_t
+                                               , cppCloseCallback, uintptr_t
+                                               , cppWriteComplete, uintptr_t
+                                               , int flags
+                                               );
+#endif
+/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
+   \ \                                                                                                                        */
+NETWORK_PROC( PCLIENT, OpenTCPClientAddrExEx )(SOCKADDR *, cReadComplete,
+                         cCloseCallback, cWriteComplete DBG_PASS );
+/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
+   \ \                                                                                                                        */
+#define OpenTCPClientAddrEx(a,b,c,d) OpenTCPClientAddrExEx(a,b,c,d DBG_SRC )
+#ifdef __cplusplus
+/* <combine sack::network::tcp::OpenTCPClientExx@CTEXTSTR@uint16_t@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
+   \ \                                                                                                                      */
+NETWORK_PROC( PCLIENT, CPPOpenTCPClientExEx )(CTEXTSTR lpName,uint16_t wPort
+                         , cppReadComplete  pReadComplete, uintptr_t
+                         , cppCloseCallback CloseCallback, uintptr_t
+                         , cppWriteComplete WriteComplete, uintptr_t
+															, cppConnectCallback pConnectComplete, uintptr_t, int DBG_PASS );
+#define CPPOpenTCPClientExx(name,port,read,rd,close,cd,write,wd,connect,cod,flg) CPPOpenTCPClientExEx(name,port,read,rd,close,cd,write,wd,connect,cod,flg DBG_SRC)
+#endif
+/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
+   \ \                                                                                                                        */
+NETWORK_PROC( PCLIENT, OpenTCPClientExxx )(CTEXTSTR lpName,uint16_t wPort
+                                           , cReadComplete  pReadComplete
+                                           , cCloseCallback CloseCallback
+                                           , cWriteComplete WriteComplete
+                                           , cConnectCallback pConnectComplete
+                                           , int flags
+                                           DBG_PASS );
+/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
+   \ \                                                                                                                        */
+#define OpenTCPClientExx( lpName, wPort, pReadComplete, CloseCallback, WriteComplete, pConnectComplete ) OpenTCPClientExxx( lpName, wPort, pReadComplete, CloseCallback, WriteComplete, pConnectComplete, 0 DBG_SRC )
+/* <combine sack::network::tcp::OpenTCPClientExx@CTEXTSTR@uint16_t@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
+   \ \                                                                                                                      */
+#define OpenTCPClient( name, port, read ) OpenTCPClientExxx(name,port,read,NULL,NULL,NULL,0 DBG_SRC )
+/* <combine sack::network::tcp::OpenTCPClientExx@CTEXTSTR@uint16_t@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
+   \ \                                                                                                                      */
+NETWORK_PROC( PCLIENT, OpenTCPClientExEx )( CTEXTSTR, uint16_t, cReadComplete,
+													  cCloseCallback, cWriteComplete DBG_PASS );
+/* <combine sack::network::tcp::OpenTCPClientExx@CTEXTSTR@uint16_t@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
+   \ \                                                                                                                      */
+#define OpenTCPClientEx( addr,port,read,close,write ) OpenTCPClientExEx( addr,port,read,close,write DBG_SRC )
+/* Do the connect to
+*/
+int NetworkConnectTCPEx( PCLIENT pc DBG_PASS );
+#define NetworkConnectTCP( pc ) NetworkConnectTCPEx( pc DBG_SRC )
+/* Drain is an operation on a TCP socket to just drop the next X
+   bytes. They are ignored and not stored into any user buffer.
+   Drain reads take precedence over any other queued reads.
+   Parameters
+   pClient :  network connection to drain data from.
+   nLength :  how much data to skip.
+   bExact :   if TRUE, will consume all of nLength bytes. if
+              FALSE, if there are less than nLength bytes
+              available right now, the drain will end when no
+              further data is available now.                     */
+NETWORK_PROC( LOGICAL, TCPDrainEx )( PCLIENT pClient, size_t nLength, int bExact );
+/* <combine sack::network::tcp::TCPDrainEx@PCLIENT@int@int>
+   \ \                                                      */
+#define TCPDrain(c,l) TCPDrainEx( (c), (l), TRUE )
+/* TCP sockets have what is called a NAGLE algorithm that helps
+   them gather small packets into larger packets. This implies a
+   latency on sent communications, but can provide a boost to
+   overall speed.
+   Parameters
+   pClient :  network client to control the nagle algorithm.
+   bEnable :  (TRUE)disable NAGLE or (FALSE)enable NAGLE
+              (TRUE)nodelay (FALSE)packet gather delay           */
+NETWORK_PROC( void, SetTCPNoDelay )( PCLIENT pClient, int bEnable );
+/* TCP Connections have a keep-alive option, that data will be
+   automatically sent to make sure the connection is still
+   alive.
+   Parameters
+   pClient :  network connection enable or disable the keep alive
+              on.
+   bEnable :  TRUE to enable keep\-alive else disable keep\-alive. */
+NETWORK_PROC( void, SetClientKeepAlive)( PCLIENT pClient, int bEnable );
+/* \    Parameters
+   lpClient :   network client to read from
+   lpBuffer :   buffer to read into
+   nBytes :     size of the buffer to read or maximum amount of
+                the read desired.
+   bIsStream :  if TRUE, any opportunity to return a packet is
+                used to pass data to the user's read callback. If
+                FALSE, will read to the complete size nBytes
+                specified.
+   bWait :      if TRUE, will block in the read until there is
+                data, or the buffer is filled completely
+                depending on the value of bIsStream. If FALSE,
+                \returns immediately, the read completion will be
+					 notified later by callback.
+	user_timeout : user specified timeout to be used if bWait is specified.
+                uses internal configurable timeout if 0.
+   Returns
+   size of the packet read if bWait is TRUE,
+   else TRUE for sent, FALSE if the packet could not be sent.
+   This buffer needs to continue existing until the socket is
+   closed, or the read callback returns.
+   Example
+   Used in a normal read callback...
+   <code lang="c++">
+   void CPROC ReadComplete( PCLIENT pc, POINTER buffer, int size )
+   {
+       if( buffer == NULL )
+           buffer = malloc( 4096 );
+       else
+       {
+          // size will be non 0, process buffer
+       }
+       ReadTCP( pc, buffer, 4096 );
+   }
+   </code>                                                         */
+NETWORK_PROC( size_t, doReadExx2)(PCLIENT lpClient,POINTER lpBuffer,size_t nBytes, LOGICAL bIsStream, LOGICAL bWait, int user_timeout DBG_PASS );
+#define doReadExx(p,b,n,s,w) DoReadExx2( p,b,n,s,w,0 )
+/* \    Parameters
+   lpClient :   network client to read from
+   lpBuffer :   buffer to read into
+   nBytes :     size of the buffer to read or maximum amount of
+                the read desired.
+   bIsStream :  if TRUE, any opportunity to return a packet is
+                used to pass data to the user's read callback. If
+                FALSE, will read to the complete size nBytes
+                specified.
+   bWait :      if TRUE, will block in the read until there is
+                data, or the buffer is filled completely
+                depending on the value of bIsStream. If FALSE,
+                \returns immediately, the read completion will be
+                notified later by callback.
+   Returns
+   size of the packet read if bWait is TRUE,
+   else TRUE for sent, FALSE if the packet could not be sent.
+   This buffer needs to continue existing until the socket is
+   closed, or the read callback returns.
+   Example
+   Used in a normal read callback...
+   <code lang="c++">
+   void CPROC ReadComplete( PCLIENT pc, POINTER buffer, int size )
+   {
+       if( buffer == NULL )
+           buffer = malloc( 4096 );
+       else
+       {
+          // size will be non 0, process buffer
+       }
+       ReadTCP( pc, buffer, 4096 );
+   }
+   </code>                                                         */
+//NETWORK_PROC( size_t, doReadExx )(PCLIENT lpClient, POINTER lpBuffer, size_t nBytes
+//										, LOGICAL bIsStream, LOGICAL bWait );
+/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
+   \    Remarks
+   if bWait is not specifed, it is passed as FALSE.                            */
+//NETWORK_PROC( size_t, doReadEx )(PCLIENT lpClient,POINTER lpBuffer,size_t nBytes, LOGICAL bIsStream DBG_PASS );
+#define doReadEx( p,b,n,s )  doReadExx2( p,b,n,s,FALSE, 0 DBG_SRC)
+/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
+   \ \                                                                         */
+#define ReadStream(pc,pBuf,nSize) doReadExx2( pc, pBuf, nSize, TRUE, FALSE, 0 DBG_SRC )
+/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
+   \ \                                                                         */
+#define doRead(pc,pBuf,nSize)     doReadExx2(pc, pBuf, nSize, FALSE, FALSE, 0 DBG_SRC )
+/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
+   \ \                                                                         */
+#define ReadTCP ReadStream
+/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
+   \ \                                                                         */
+#define ReadTCPMsg doRead
+/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
+   \ \                                                                         */
+#define WaitReadTCP(pc,buf,nSize)    doReadExx2(pc,buf, nSize, TRUE, TRUE, 0 DBG_SRC )
+/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
+   \ \                                                                         */
+#define WaitReadTCPMsg(pc,buf,nSize) doReadExx2(pc,buf, nSize, FALSE, TRUE, 0  DBG_SRC)
+/* \#The buffer will be sent in the order of the writes to the
+   socket, and released when empty. If the socket is immediatly
+   able to write, the buffer will be sent, and any remai
+   Parameters
+   lpClient :     network connection to write to
+   pInBuffer :    buffer to write
+   nInLen :       Length of the buffer to send
+   bLongBuffer :  if TRUE, then the buffer written is maintained
+                  exactly by the network layer. A WriteComplete
+                  callback will be invoked when the buffer has
+                  been sent so the application might delete the
+                  buffer.
+   failpending :  Uhmm... maybe if it goes to pending, fail?
+   Remarks
+   If bLongBuffer is not set, then if the write cannot
+   immediately complete, then a new buffer is allocated
+   internally, and unsent data is buffered by the network
+   collection. This allows the user to not worry about slowdowns
+   due to blocking writes. Often writes complete immediately,
+   and are not buffered other than in the user's own buffer
+   passed to this write.                                         */
+NETWORK_PROC( LOGICAL, doTCPWriteExx )( PCLIENT lpClient
+						, CPOINTER pInBuffer
+						, size_t nInLen, int bLongBuffer
+                                   , int failpending
+                                   DBG_PASS
+                                  );
+/* <combine sack::network::tcp::doTCPWriteExx@PCLIENT@CPOINTER@int@int@int failpending>
+   \ \                                                                                  */
+#define doTCPWriteEx( c,b,l,f1,f2) doTCPWriteExx( (c),(b),(l),(f1),(f2) DBG_SRC )
+/* <combine sack::network::tcp::doTCPWriteExx@PCLIENT@CPOINTER@int@int@int failpending>
+   \ \                                                                                  */
+#define SendTCPEx( c,b,l,p) doTCPWriteExx( c,b,l,FALSE,p DBG_SRC)
+/* <combine sack::network::tcp::doTCPWriteExx@PCLIENT@CPOINTER@int@int@int failpending>
+   \ \                                                                                  */
+#define SendTCP(c,b,l) doTCPWriteExx(c,b,l, FALSE, FALSE DBG_SRC)
+/* <combine sack::network::tcp::doTCPWriteExx@PCLIENT@CPOINTER@int@int@int failpending>
+   \ \                                                                                  */
+#define SendTCPLong(c,b,l) doTCPWriteExx(c,b,l, TRUE, FALSE DBG_SRC)
+_TCP_NAMESPACE_END
+NETWORK_PROC( void, SetNetworkLong )(PCLIENT lpClient,int nLong,uintptr_t dwValue);
+NETWORK_PROC( uintptr_t, GetNetworkLong )(PCLIENT lpClient, int nLong);
+/* Obsolete. See SetNetworkLong. */
+NETWORK_PROC( void, SetNetworkInt )(PCLIENT lpClient,int nLong, int value);
+NETWORK_PROC( int, GetNetworkInt )(PCLIENT lpClient, int nLong);
+NETWORK_PROC( void, SetNetworkWord )(PCLIENT lpClient,int nLong,uint16_t wValue);
+NETWORK_PROC( uint16_t, GetNetworkWord )(PCLIENT lpClient,int nLong);
+/* Symbols which may be passed to GetNetworkLong to get internal
+   parts of the client.                                          */
+enum GetNetworkLongAccessInternal{
+ GNL_IP      = (-1),
+ /* Gets the IP of the remote side of the connection, if
+    applicable. UDP Sockets don't have a bound destination. */
+ GNL_PORT    = (-4),
+ /* Gets the port at the remote side of the connection that is
+    being sent to.                                             */
+ GNL_MYIP    = (-3),
+ /* Gets the 4 byte IPv4 address that is what I am using on my
+    side. After a socket has sent, it will have a set source IP
+    under windows.                                              */
+ GNL_MYPORT  = (-2),
+ /* Gets the 16 bit port of the TCP or UDP connection that you
+    are sending from locally.                                  */
+ GNL_MAC_LOW = (-5),
+ GNL_MAC_HIGH= (-6),
+ GNL_REMOTE_ADDRESS = (-7),
+ GNL_LOCAL_ADDRESS = (-8),
+};
+//int get_mac_addr (char *device, unsigned char *buffer)
+NETWORK_PROC( int, GetMacAddress)(PCLIENT pc, uint8_t* buf, size_t *buflen );
+//NETWORK_PROC( int, GetMacAddress)(PCLIENT pc );
+//int get_mac_addr (char *device, unsigned char *buffer)
+NETWORK_PROC( PLIST, GetMacAddresses)( void );
+NETWORK_PROC( LOGICAL, sack_network_is_active )( PCLIENT pc );
+NETWORK_PROC( void, RemoveClientExx )(PCLIENT lpClient, LOGICAL bBlockNofity, LOGICAL bLinger DBG_PASS );
+/* <combine sack::network::RemoveClientExx@PCLIENT@LOGICAL@LOGICAL bLinger>
+   \ \                                                                      */
+#define RemoveClientEx(c,b,l) RemoveClientExx(c,b,l DBG_SRC)
+/* <combine sack::network::RemoveClientExx@PCLIENT@LOGICAL@LOGICAL bLinger>
+   \ \                                                                      */
+#define RemoveClient(c) RemoveClientEx(c, FALSE, FALSE )
+/* Begin an SSL Connection.  This ends up replacing ReadComplete callback with an inbetween layer*/
+NETWORK_PROC( LOGICAL, ssl_BeginClientSession )( PCLIENT pc, CPOINTER keypair, size_t keylen, CPOINTER keypass, size_t keypasslen, CPOINTER rootCert, size_t rootCertLen );
+NETWORK_PROC( LOGICAL, ssl_BeginServer )( PCLIENT pc, CPOINTER cert, size_t certlen, CPOINTER keypair, size_t keylen, CPOINTER keypass, size_t keypasslen);
+NETWORK_PROC( LOGICAL, ssl_BeginServer_v2 )( PCLIENT pc, CPOINTER cert, size_t certlen
+	, CPOINTER keypair, size_t keylen
+	, CPOINTER keypass, size_t keypasslen
+	, char* hosts );
+NETWORK_PROC( LOGICAL, ssl_GetPrivateKey )(PCLIENT pc, POINTER *keydata, size_t *keysize);
+NETWORK_PROC( LOGICAL, ssl_IsClientSecure )(PCLIENT pc);
+NETWORK_PROC( void, ssl_SetIgnoreVerification )(PCLIENT pc);
+NETWORK_PROC( CTEXTSTR, ssl_GetRequestedHostName )(PCLIENT pc);
+// during ssl error callback, this can be used to revert (server) sockets to
+// non SSL.
+// a CLient socket will have already sent SSL Data on the socket, and it would
+// be unclean to try to change protocol.
+// the Server, however, fails the handshake on the first receive, and previously
+// just closed, but new error handling allows fallback to HTTP in order to send
+// a redirect to the HTTPS address proper.
+NETWORK_PROC( void, ssl_EndSecure )(PCLIENT pc, POINTER buffer, size_t buflen );
+/* use this to send on SSL Connection instead of SendTCP. */
+NETWORK_PROC( LOGICAL, ssl_Send )( PCLIENT pc, CPOINTER buffer, size_t length );
+/* User Datagram Packet connection methods. This controls
+   opening sockets that are based on UDP.                 */
+_UDP_NAMESPACE
+/* Open a UDP socket. Since the address to send to is implied on
+   each message that is sent, all that is required is to setup
+   where the UDP socket is listening.
+   Parameters
+   pAddr :          Pointer to a string address to listen at. Can
+                    be NULL to listen on any interface, (also
+                    specified as "0.0.0.0"), see
+                    CreateSockAddress notes.
+   wPort :          16 bit value for the port to listen at.
+   pReadComplete :  user callback which is invoked when a read
+                    completes on a UDP socket.
+   Close :          close callback which is invoked when the new
+                    network connection is closed.
+   Returns
+   NULL if no clients available, or if address bind on listen
+   side fails.
+   otherwise is a valid network connection to send and receive
+   UDP data on.
+   The read_complete callback, if specified, will be called,
+	with a NULL pointer and 0 size, before the connect complete.   */
+NETWORK_PROC( PCLIENT, CPPServeUDPAddrEx )( SOCKADDR *pAddr
+                  , cReadCompleteEx pReadComplete
+                  , uintptr_t psvRead
+                  , cCloseCallback Close
+													 , uintptr_t psvClose
+													 , int bCPP DBG_PASS );
+NETWORK_PROC( PCLIENT, ServeUDPEx )( CTEXTSTR pAddr, uint16_t wPort,
+                  cReadCompleteEx pReadComplete,
+                  cCloseCallback Close DBG_PASS );
+#define ServeUDP( addr,port,read,close) ServeUDPEx( addr, port, read, close DBG_SRC )
+//NETWORK_PROC( PCLIENT, ServeUDP )( CTEXTSTR pAddr, uint16_t wPort,
+//                  cReadCompleteEx pReadComplete,
+//                  cCloseCallback Close);
+//NETWORK_PROC( PCLIENT, ServeUDP )( CTEXTSTR pAddr, uint16_t wPort,
+//                  cReadCompleteEx pReadComplete,
+//                  cCloseCallback Close);
+/* Creates a client to listen for messages or to send UDP
+   messages.
+   Parameters
+   pAddr :          address to listen for UDP messages on.
+   pReadComplete :  user callback to received read events.
+   Close :          user callback to be invoked when the network
+                    connection is closed. (network interface
+                    disabled?)
+   Returns
+   NULL if no sockets are available, or the bind fails. (consult
+   log?)
+   \returns a network connection which is listening on the
+   specified address. The read complete will be called. if it is
+	specified, before this function returns.                      */
+NETWORK_PROC( PCLIENT, ServeUDPAddrEx )( SOCKADDR *pAddr,
+                     cReadCompleteEx pReadComplete,
+													 cCloseCallback Close DBG_PASS );
+#define ServeUDPAddr(addr,read,close) ServeUDPAddrEx( addr,read,close DBG_SRC )
+/* \    Parameters
+   address :         Address to listen at (interface
+                     specification). Can be NULL to specify ANY
+                     address, See notes on CreateSockAddress.
+   port :            16 bit port to listen at
+   dest_address :    Address to connect to. Can be NULL to
+                     specify ANY address, See notes on
+                     CreateSockAddress.
+   dest_port :       16 bit port to send to. Ignored if
+                     dest_address is NULL.
+   read_complete :   User event handler which is invoked when
+                     data is read from the socket.
+   close_callback :  user event handler which is invoked when
+                     this socket is closed.
+   Returns
+   NULL if no clients available, or if address bind on listen
+   side fails.
+   otherwise is a valid network connection to send and receive
+   UDP data on.
+   The read_complete callback, if specified, will be called,
+   with a NULL pointer and 0 size, before the connect complete. */
+NETWORK_PROC( PCLIENT, ConnectUDPEx )( CTEXTSTR , uint16_t ,
+                    CTEXTSTR, uint16_t,
+                    cReadCompleteEx,
+												  cCloseCallback DBG_PASS );
+#define ConnectUDP(a,b,c,d,e,f) ConnectUDPEx(a,b,c,d,e,f DBG_SRC )
+/* \    Parameters
+   sa :             address to listen for UDP messages at.
+   saTo :           address to send UDP messages to, if the sa
+                    parameter of send is NULL.
+   pReadComplete :  user callback which will be invoked when
+                    reads complete on the network connection.
+   Close :          user callback which will be invoked when the
+                    listening socket closes.
+   Returns
+   NULL if no sockets are available, or the bind fails. (consult
+   log?)
+   \returns a network connection which is listening on the
+   specified address. The read complete will be called. if it is
+   specified, before this function returns.                      */
+NETWORK_PROC( PCLIENT, ConnectUDPAddrEx )( SOCKADDR *sa,
+                        SOCKADDR *saTo,
+                    cReadCompleteEx pReadComplete,
+													 cCloseCallback Close DBG_PASS );
+#define ConnectUDPAddr(a,b,c,d)  ConnectUDPAddrEx(a,b,c,d DBG_SRC )
+/* Specify a different default address to send UDP messages to.
+   Parameters
+   pc :       network connection to change the default target
+              address of.
+   pToAddr :  text address to connect to. See notes in
+              CreateSockAddress.
+   wPort :    16 bit port address to connect to.
+   Returns
+   TRUE if it was a valid address specification.
+   FALSE if it could not set the address.                       */
+NETWORK_PROC( LOGICAL, ReconnectUDP )( PCLIENT pc, CTEXTSTR pToAddr, uint16_t wPort );
+/* Sets the target default address of a UDP connection.
+   Parameters
+   pc :  network connection to set the target address of.
+   sa :  See CreateSockAddress(), this is a network structure that
+         is a struct sockaddr{} something.                         */
+NETWORK_PROC( LOGICAL, GuaranteeAddr )( PCLIENT pc, SOCKADDR *sa );
+/* A UDP message may be sent to a broadcast address or a subnet
+   broadcast address, in either case, this must be called to
+   enable broadcast communications, else the address must be a
+   direct connection.
+   Parameters
+   pc :       network connection to enable broadcast on.
+   bEnable :  TRUE to enable broadcast ability on this socket. FALSE
+              to disable broadcast ability.                          */
+NETWORK_PROC( void, UDPEnableBroadcast )( PCLIENT pc, int bEnable );
+/* Sends to a UDP Network connection.
+   Parameters
+   pc :     pointer to a network connection to send on.
+   pBuf :   buffer to send
+   nSize :  size of the buffer to send
+   sa :     pointer to a SOCKADDR which this message is destined
+            to. Can be NULL, if GuaranteeAddr, or ConnectUDP is
+            used.
+   Returns
+   The number of bytes in the buffer sent? Probably a TRUE if
+   success else failure?                                         */
+NETWORK_PROC( LOGICAL, SendUDPEx )( PCLIENT pc, CPOINTER pBuf, size_t nSize, SOCKADDR *sa );
+/* <combine sack::network::udp::SendUDPEx@PCLIENT@CPOINTER@int@SOCKADDR *>
+   \ \                                                                     */
+#define SendUDP(pc,pbuf,size) SendUDPEx( pc, pbuf, size, NULL )
+/* Queue a read to a UDP socket. A read cannot complete if it
+   does not have a buffer to read into. A UDP socket will stall
+   if the read callback returns without queuing a read.
+   Parameters
+   pc :        network connection to read from.
+   lpBuffer :  buffer which the next data available on the network
+               connection will be read into.
+   nBytes :    size of the buffer.                                 */
+NETWORK_PROC( int, doUDPRead )( PCLIENT pc, POINTER lpBuffer, int nBytes );
+/* <combine sack::network::udp::doUDPRead@PCLIENT@POINTER@int>
+   \ \                                                         */
+#define ReadUDP doUDPRead
+/* Logs to the log file the content of a socket address.
+   Parameters
+   name :  text leader to print before the address
+   sa :    the socket address to dump.                   */
+NETWORK_PROC( void, DumpAddrEx )( CTEXTSTR name, SOCKADDR *sa DBG_PASS );
+/* <combine sack::network::udp::DumpAddrEx@CTEXTSTR@SOCKADDR *sa>
+   \ \                                                            */
+#define DumpAddr(n,sa) DumpAddrEx(n,sa DBG_SRC )
+NETWORK_PROC( int, SetSocketReuseAddress )( PCLIENT pClient, int32_t enable );
+NETWORK_PROC( int, SetSocketReusePort )( PCLIENT pClient, int32_t enable );
+_UDP_NAMESPACE_END
+USE_UDP_NAMESPACE
+struct interfaceAddress {
+	SOCKADDR *sa;
+	SOCKADDR *saBroadcast;
+	SOCKADDR *saMask;
+};
+NETWORK_PROC( SOCKADDR*, GetBroadcastAddressForInterface )(SOCKADDR *addr);
+NETWORK_PROC( SOCKADDR*, GetInterfaceAddressForBroadcast )(SOCKADDR *addr);
+NETWORK_PROC( struct interfaceAddress*, GetInterfaceForAddress )( SOCKADDR *addr );
+NETWORK_PROC( LOGICAL, IsBroadcastAddressForInterface )( struct interfaceAddress *address, SOCKADDR *addr );
+NETWORK_PROC( void, LoadNetworkAddresses )(void);
+//----- PING.C ------
+NETWORK_PROC( LOGICAL, DoPing )( CTEXTSTR pstrHost,
+             int maxTTL,
+             uint32_t dwTime,
+             int nCount,
+             PVARTEXT pResult,
+             LOGICAL bRDNS,
+             void (*ResultCallback)( uint32_t dwIP, CTEXTSTR name, int min, int max, int avg, int drop, int hops ) );
+NETWORK_PROC( LOGICAL, DoPingEx )( CTEXTSTR pstrHost,
+             int maxTTL,
+             uint32_t dwTime,
+             int nCount,
+             PVARTEXT pResult,
+             LOGICAL bRDNS,
+											 void (*ResultCallback)( uintptr_t psv, uint32_t dwIP, CTEXTSTR name, int min, int max, int avg, int drop, int hops )
+											, uintptr_t psv );
+//----- WHOIS.C -----
+NETWORK_PROC( LOGICAL, DoWhois )( CTEXTSTR pHost, CTEXTSTR pServer, PVARTEXT pvtResult );
+#ifdef __cplusplus
+#  if defined( INCLUDE_SAMPLE_CPLUSPLUS_WRAPPERS )
+typedef class network *PNETWORK;
+/* <combine sack::network::network>
+   \ \                              */
+typedef class network
+{
+	PCLIENT pc;
+	int TCP;
+	static void CPROC WrapTCPReadComplete( uintptr_t psv, POINTER buffer, size_t nSize );
+	static void CPROC WrapUDPReadComplete( uintptr_t psv, POINTER buffer, size_t nSize, SOCKADDR *sa );
+	static void CPROC WrapWriteComplete( uintptr_t psv );
+	static void CPROC WrapClientConnectComplete( uintptr_t psv, int nError );
+	static void CPROC WrapServerConnectComplete( uintptr_t psv, PCLIENT pcNew );
+	static void CPROC WrapCloseCallback( uintptr_t psv );
+   // notify == server (listen)
+	static void CPROC SetNotify( PCLIENT pc, cppNotifyCallback, uintptr_t psv );
+   // connect == client (connect)
+   static void CPROC SetConnect( PCLIENT pc, cppConnectCallback, uintptr_t psv );
+   static void CPROC SetRead( PCLIENT pc, cppReadComplete, uintptr_t psv );
+   static void CPROC SetWrite( PCLIENT pc, cppWriteComplete, uintptr_t psv );
+   static void CPROC SetClose( PCLIENT pc, cppCloseCallback, uintptr_t psv );
+public:
+	network() { NetworkStart(); pc = NULL; TCP = TRUE; };
+	network( PCLIENT _pc ) { NetworkStart(); this->pc = _pc; TCP = TRUE; };
+	network( network &cp ) { cp.pc = pc; cp.TCP = TCP; };
+	~network() { if( pc ) RemoveClientEx( pc, TRUE, FALSE ); pc = NULL; };
+	inline void MakeUDP( void ) { TCP = FALSE; }
+	virtual void ReadComplete( POINTER buffer, size_t nSize ) = 0;
+	virtual void ReadComplete( POINTER buffer, size_t nSize, SOCKADDR *sa ) = 0;
+	virtual void WriteComplete( void ) = 0;
+	virtual void ConnectComplete( int nError ) =0;
+	// received on the server listen object...
+	virtual void ConnectComplete( class network &pNewClient ) =0;
+	virtual void CloseCallback( void ) =0;
+	inline int Connect( SOCKADDR *sa )
+	{
+		if( !pc )
+		pc = CPPOpenTCPClientAddrExx( sa
+									, WrapTCPReadComplete
+									, (uintptr_t)this
+									, WrapCloseCallback
+									, (uintptr_t)this
+									, WrapWriteComplete
+									, (uintptr_t)this
+									, WrapClientConnectComplete
+									, (uintptr_t)this
+									, 0
+									);
+		return (int)(pc!=NULL);
+	};
+	inline int Connect( CTEXTSTR name, uint16_t port )
+	{
+		if( !pc )
+		pc = CPPOpenTCPClientExx( name, port
+									, WrapTCPReadComplete
+									, (uintptr_t)this
+									, WrapCloseCallback
+									, (uintptr_t)this
+									, WrapWriteComplete
+									, (uintptr_t)this
+									, WrapClientConnectComplete
+									, (uintptr_t)this
+									, 0
+									);
+		return (int)(pc!=NULL);
+	};
+	inline int Listen( SOCKADDR *sa )
+	{
+		if( !pc )
+		{
+			if( ( pc = CPPOpenTCPListenerAddrEx( sa
+				                        , (cppNotifyCallback)WrapServerConnectComplete
+												, (uintptr_t)this
+														)  ) != NULL )
+			{
+				SetRead( pc, (cppReadComplete)WrapTCPReadComplete, (uintptr_t)this );
+				SetWrite( pc, (cppWriteComplete)WrapWriteComplete, (uintptr_t)this );
+				SetClose( pc, network::WrapCloseCallback, (uintptr_t)this );
+			}
+		}
+		return (int)(pc!=NULL);
+	};
+	inline int Listen( uint16_t port )
+	{
+		if( !pc )
+		{
+			if( ( pc = CPPOpenTCPListenerEx( port
+			                      , (cppNotifyCallback)WrapServerConnectComplete
+											 , (uintptr_t)this ) ) )
+			{
+				SetRead( pc, (cppReadComplete)WrapTCPReadComplete, (uintptr_t)this );
+				SetWrite( pc, (cppWriteComplete)WrapWriteComplete, (uintptr_t)this );
+				SetClose( pc, network::WrapCloseCallback, (uintptr_t)this );
+			}
+		}
+		return (int)(pc!=NULL);
+	};
+	inline void Write( POINTER p, int size )
+	{
+		if( pc ) SendTCP( pc, p, size );
+	};
+	inline void WriteLong( POINTER p, int size )
+	{
+		if( pc ) SendTCPLong( pc, p, size );
+	};
+	inline void Read( POINTER p, int size )
+	{
+		if( pc ) ReadTCP( pc, p, size );
+	};
+	inline void ReadBlock( POINTER p, int size )
+	{
+		if( pc ) ReadTCPMsg( pc, p, size );
+	};
+	inline void SetLong( int l, uint32_t value )
+	{
+      if( pc ) SetNetworkLong( pc, l, value );
+	}
+	inline void SetNoDelay( LOGICAL bTrue )
+	{
+      if( pc ) SetTCPNoDelay( pc, bTrue );
+	}
+	inline void SetClientKeepAlive( LOGICAL bTrue )
+	{
+		if( pc ) sack::network::SetClientKeepAlive( pc, bTrue );
+	}
+	inline uintptr_t GetLong( int l )
+	{
+		if( pc )
+			return GetNetworkLong( pc, l );
+	      return 0;
+	}
+}NETWORK;
+#  endif
+#endif
+SACK_NETWORK_NAMESPACE_END
+#ifdef __cplusplus
+using namespace sack::network;
+using namespace sack::network::tcp;
+using namespace sack::network::udp;
+#endif
+#endif
+//------------------------------------------------------------------
+// $Log: network.h,v $
+// Revision 1.36  2005/05/23 19:29:24  jim
+// Added definition to support WaitReadTCP...
+//
+// Revision 1.35  2005/03/15 20:22:32  chrisd
+// Declare NotifyCallback with meaningful parameters
+//
+// Revision 1.34  2005/03/15 20:14:15  panther
+// Define a routine to build a PF_UNIX socket for unix... this can be used with TCP_ routines to open a unix socket instead of an IP socket.
+//
+// Revision 1.33  2004/09/29 00:49:47  d3x0r
+// Added fancy wait for PSI frames which allows non-polling sleeping... Extended Idle() to result in meaningful information.
+//
+// Revision 1.32  2004/08/18 23:52:24  d3x0r
+// Cleanups - also enhanced network init to expand if called with larger params.
+//
+// Revision 1.31  2004/07/28 16:47:18  jim
+// added support for get address parts.
+//
+// Revision 1.31  2004/07/27 18:28:17  d3x0r
+// Added definition for getaddressparts
+//
+// Revision 1.30  2004/01/26 23:47:20  d3x0r
+// Misc edits.  Fixed filemon.  Export net startup, added def to edit frame
+//
+// Revision 1.29  2003/12/03 10:21:34  panther
+// Tinkering with C++ networking
+//
+// Revision 1.28  2003/11/09 03:32:22  panther
+// Added some address functions to set port and override default port
+//
+// Revision 1.27  2003/09/25 08:34:00  panther
+// Restore callback defs to proper place
+//
+// Revision 1.26  2003/09/25 08:29:16  panther
+// ...New test
+//
+// Revision 1.25  2003/09/25 00:22:35  panther
+// Move cpp wrapper functions into network library
+//
+// Revision 1.24  2003/09/25 00:21:49  panther
+// Move cpp wrapper functions into network library
+//
+// Revision 1.23  2003/09/24 15:10:54  panther
+// Much mangling to extend C++ network interface...
+//
+// Revision 1.22  2003/09/24 02:26:02  panther
+// Fix C++ methods, extend and correct.
+//
+// Revision 1.21  2003/07/29 09:27:14  panther
+// Add Keep Alive option, enable use on proxy
+//
+// Revision 1.20  2003/07/24 16:56:41  panther
+// Updates to expliclity define C procedure model for callbacks and assembly modules - incomplete
+//
+// Revision 1.19  2003/06/04 11:38:01  panther
+// Define PACKED
+//
+// Revision 1.18  2003/03/25 08:38:11  panther
+// Add logging
+//
+// Revision 1.17  2002/12/22 00:14:11  panther
+// Cleanup function declarations and project defines.
+//
+// Revision 1.16  2002/11/24 21:37:40  panther
+// Mods - network - fix server->accepted client method inheritance
+// display - fix many things
+// types - merge chagnes from verious places
+// ping - make function result meaningful yes/no
+// controls - fixes to handle lack of image structure
+// display - fixes to handle moved image structure.
+//
+// Revision 1.16  2002/11/21 19:13:11  jim
+// Added CreateAddress, CreateAddress_hton
+//
+// Revision 1.15  2002/07/25 12:59:02  panther
+// Added logging, removed logging....
+// Network: Added NetworkLock/NetworkUnlock
+// Timers: Modified scheduling if the next timer delta was - how do you say -
+// to fire again before now.
+//
+// Revision 1.14  2002/07/23 11:24:26  panther
+// Added new function to TCP networking - option on write to disable
+// queuing of pending data.
+//
+// Revision 1.13  2002/07/17 11:33:26  panther
+// Added new function to tcp network - dotcpwriteex - allows option to NOT pend
+// buffers.
+//
+// Revision 1.12  2002/07/15 08:34:07  panther
+// Include function to set udp broadcast or not.
+//
+//
+// $Log: network.h,v $
+// Revision 1.36  2005/05/23 19:29:24  jim
+// Added definition to support WaitReadTCP...
+//
+// Revision 1.35  2005/03/15 20:22:32  chrisd
+// Declare NotifyCallback with meaningful parameters
+//
+// Revision 1.34  2005/03/15 20:14:15  panther
+// Define a routine to build a PF_UNIX socket for unix... this can be used with TCP_ routines to open a unix socket instead of an IP socket.
+//
+// Revision 1.33  2004/09/29 00:49:47  d3x0r
+// Added fancy wait for PSI frames which allows non-polling sleeping... Extended Idle() to result in meaningful information.
+//
+// Revision 1.32  2004/08/18 23:52:24  d3x0r
+// Cleanups - also enhanced network init to expand if called with larger params.
+//
+// Revision 1.31  2004/07/28 16:47:18  jim
+// added support for get address parts.
+//
+// Revision 1.31  2004/07/27 18:28:17  d3x0r
+// Added definition for getaddressparts
+//
+// Revision 1.30  2004/01/26 23:47:20  d3x0r
+// Misc edits.  Fixed filemon.  Export net startup, added def to edit frame
+//
+// Revision 1.29  2003/12/03 10:21:34  panther
+// Tinkering with C++ networking
+//
+// Revision 1.28  2003/11/09 03:32:22  panther
+// Added some address functions to set port and override default port
+//
+// Revision 1.27  2003/09/25 08:34:00  panther
+// Restore callback defs to proper place
+//
+// Revision 1.26  2003/09/25 08:29:16  panther
+// ...New test
+//
+// Revision 1.25  2003/09/25 00:22:35  panther
+// Move cpp wrapper functions into network library
+//
+// Revision 1.24  2003/09/25 00:21:49  panther
+// Move cpp wrapper functions into network library
+//
+// Revision 1.23  2003/09/24 15:10:54  panther
+// Much mangling to extend C++ network interface...
+//
+// Revision 1.22  2003/09/24 02:26:02  panther
+// Fix C++ methods, extend and correct.
+//
+// Revision 1.21  2003/07/29 09:27:14  panther
+// Add Keep Alive option, enable use on proxy
+//
+// Revision 1.20  2003/07/24 16:56:41  panther
+// Updates to expliclity define C procedure model for callbacks and assembly modules - incomplete
+//
+// Revision 1.19  2003/06/04 11:38:01  panther
+// Define PACKED
+//
+// Revision 1.18  2003/03/25 08:38:11  panther
+// Add logging
+//
+/* and then we could be really evil
+#define send(s,b,x,t,blah)
+#define recv
+#define socket
+#define getsockopt ?
+#define heh yeah these have exact equivalents ....
+*/
+/*
+ * SACK extension to define methods to render to javascript/HTML5 WebSocket event interface
+ *
+ * Crafted by: Jim Buckeyne
+ *
+ * Purpose: Provide a well defined, concise structure to
+ *   provide websocket server support to C applications.
+ *
+ *
+ *
+ * (c)Freedom Collective, Jim Buckeyne 2012+; SACK Collection.
+ *
+ */
+#ifndef HTML5_WEBSOCKET_STUFF_DEFINED
+#define HTML5_WEBSOCKET_STUFF_DEFINED
+/*
+ * Create: James Buckeyne
+ *
+ * Purpose: Provide a general structure to register names of
+ *   routines and data structures which may be consulted
+ *   for runtime linking.  Aliases and other features make this
+ *   a useful library for tracking interface registration...
+ *
+ *  The namespace may be enumerated.
+ */
+#ifndef PROCEDURE_REGISTRY_LIBRARY_DEFINED
+#define PROCEDURE_REGISTRY_LIBRARY_DEFINED
 #ifndef DEADSTART_DEFINED
 #define DEADSTART_DEFINED
 #ifdef WIN32
@@ -7286,7 +8583,15 @@ struct rt_init
 #endif
 #endif
 } __attribute__((packed));
-#define JUNKINIT(name) ,&pastejunk(name,_ctor_label)
+#if defined( _DEBUG ) || defined( _DEBUG_INFO )
+#  if defined( __GNUC__ ) && defined( __64__)
+#    define JUNKINIT(name) ,&pastejunk(name,_ctor_label), {0,0}
+#  else
+#    define JUNKINIT(name) ,&pastejunk(name,_ctor_label)
+#  endif
+#else
+#  define JUNKINIT(name) ,&pastejunk(name,_ctor_label)
+#endif
 #define RTINIT_STATIC static
 #define ATEXIT_PRIORITY PRIORITY_ATEXIT
 #if defined( _DEBUG ) || defined( _DEBUG_INFO )
@@ -7299,9 +8604,18 @@ struct rt_init
 #else
 #  define DEADSTART_SECTION "deadstart_list"
 #endif
+#ifdef __MANUAL_PRELOAD__
 #define PRIORITY_PRELOAD(name,pr) static void name(void);	 RTINIT_STATIC struct rt_init pastejunk(name,_ctor_label)		__attribute__((section(DEADSTART_SECTION))) __attribute__((used))	 =	 {0,0,pr INIT_PADDING, __LINE__, name PASS_FILENAME	, TOSTR(name) JUNKINIT(name)} ;	 void name(void);	 void pastejunk(registerStartup,name)(void) __attribute__((constructor));	 void pastejunk(registerStartup,name)(void) {	 RegisterPriorityStartupProc(name,TOSTR(name),pr,NULL DBG_SRC); }	 void name(void)
+#else
+#if defined( _WIN32 ) && defined( __GNUC__ )
+#  define HIDDEN_VISIBILITY
+#else
+#  define HIDDEN_VISIBILITY  __attribute__((visibility("hidden")))
+#endif
+#define PRIORITY_PRELOAD(name,pr) static void name(void);	         RTINIT_STATIC struct rt_init pastejunk(name,_ctor_label)	         __attribute__((section(DEADSTART_SECTION))) __attribute__((used)) HIDDEN_VISIBILITY	 ={0,0,pr INIT_PADDING	                                           ,__LINE__,name	                                                 PASS_FILENAME	                                                 ,TOSTR(name)	                                                   JUNKINIT(name)};	                                               static void name(void) __attribute__((used)) HIDDEN_VISIBILITY;	 void name(void)
+#endif
 typedef void(*atexit_priority_proc)(void (*)(void),CTEXTSTR,int DBG_PASS);
-#define PRIORITY_ATEXIT(name,priority) static void name(void); static void pastejunk(atexit,name)(void) __attribute__((constructor));  void pastejunk(atexit,name)(void)                                                  {	                                                                        RegisterPriorityShutdownProc(name,TOSTR(name),priority,NULL DBG_SRC);                          }                                                                          void name(void)
+#define PRIORITY_ATEXIT(name,priority) static void name(void);           static void pastejunk(atexit,name)(void) __attribute__((constructor));   void pastejunk(atexit,name)(void)                                        {	                                                                        RegisterPriorityShutdownProc(name,TOSTR(name),priority,NULL DBG_SRC); }                                                                        void name(void)
 #define ATEXIT(name) PRIORITY_ATEXIT( name,ATEXIT_PRIORITY_DEFAULT )
 #define ROOT_ATEXIT(name) static void name(void) __attribute__((destructor));    static void name(void)
 #define PRELOAD(name) PRIORITY_PRELOAD(name,DEFAULT_PRELOAD_PRIORITY)
@@ -7366,7 +8680,7 @@ struct rt_init
 #define RTINIT_STATIC static
 #endif
 typedef void(*atexit_priority_proc)(void (*)(void),CTEXTSTR,int DBG_PASS);
-#define ATEXIT_PRIORITY(name,priority) static void name(void); static void atexit##name(void) __attribute__((constructor));	  void atexit_failed##name(void(*f)(void),int i,CTEXTSTR s1,CTEXTSTR s2,int n) { lprintf( WIDE("Failed to load atexit_priority registerar from core program.") );} void atexit##name(void)                                                  {	                                                                        static char myname[256];HMODULE mod;if(myname[0])return;myname[0]='a';GetModuleFileName( NULL, myname, sizeof( myname ) );	mod=LoadLibrary(myname);if(mod){   typedef void (*x)(void);void(*rsp)( x,const CTEXTSTR,int,const CTEXTSTR,int);	 if((rsp=((void(*)(void(*)(void),const CTEXTSTR,int,const CTEXTSTR,int))(GetProcAddress( mod, WIDE("RegisterPriorityShutdownProc"))))))	 {rsp( name,TOSTR(name),priority DBG_SRC);}	 else atexit_failed##name(name,priority,TOSTR(name) DBG_SRC);	        }     FreeLibrary( mod);	 }             void name( void)
+#define ATEXIT_PRIORITY(name,priority) static void name(void); static void atexit##name(void) __attribute__((constructor));	  void atexit_failed##name(void(*f)(void),int i,CTEXTSTR s1,CTEXTSTR s2,int n) { lprintf( "Failed to load atexit_priority registerar from core program." );} void atexit##name(void)                                                  {	                                                                        static char myname[256];HMODULE mod;if(myname[0])return;myname[0]='a';GetModuleFileName( NULL, myname, sizeof( myname ) );	mod=LoadLibrary(myname);if(mod){   typedef void (*x)(void);void(*rsp)( x,const CTEXTSTR,int,const CTEXTSTR,int);	 if((rsp=((void(*)(void(*)(void),const CTEXTSTR,int,const CTEXTSTR,int))(GetProcAddress( mod, "RegisterPriorityShutdownProc")))))	 {rsp( name,TOSTR(name),priority DBG_SRC);}	 else atexit_failed##name(name,priority,TOSTR(name) DBG_SRC);	        }     FreeLibrary( mod);	 }             void name( void)
 #ifdef _DEBUG
 #  define PASS_FILENAME ,WIDE__FILE__
 #else
@@ -7415,7 +8729,7 @@ typedef void(*atexit_priority_proc)(void (*)(void),int,CTEXTSTR DBG_PASS);
 #define ATEXIT_PRIORITY(name,priority) PRIORITY_ATEXIT(name,priority)
 #endif
 #ifdef __cplusplus_cli
-#define InvokeDeadstart() do {	                                              TEXTCHAR myname[256];HMODULE mod;	 mod=LoadLibrary("sack_bag.dll");if(mod){           void(*rsp)(void);	 if((rsp=((void(*)(void))(GetProcAddress( mod, "RunDeadstart"))))){rsp();}else{lprintf( WIDE("Hey failed to get proc %d"), GetLastError() );}	FreeLibrary( mod); }} while(0)
+#define InvokeDeadstart() do {	                                              TEXTCHAR myname[256];HMODULE mod;	 mod=LoadLibrary("sack_bag.dll");if(mod){           void(*rsp)(void);	 if((rsp=((void(*)(void))(GetProcAddress( mod, "RunDeadstart"))))){rsp();}else{lprintf( "Hey failed to get proc %d", GetLastError() );}	FreeLibrary( mod); }} while(0)
 #else
 #endif
 #define PRELOAD(name) PRIORITY_PRELOAD(name,DEFAULT_PRELOAD_PRIORITY)
@@ -7456,1186 +8770,2056 @@ typedef void(*atexit_priority_proc)(void (*)(void),int,CTEXTSTR DBG_PASS);
 SACK_DEADSTART_NAMESPACE_END
 USE_SACK_DEADSTART_NAMESPACE
 #endif
-#ifndef NETWORK_HEADER_INCLUDED
-#define NETWORK_HEADER_INCLUDED
-#ifdef NETWORK_SOURCE
-#define NETWORK_PROC(type,name) EXPORT_METHOD type CPROC name
+#ifdef PROCREG_SOURCE
+#define PROCREG_PROC(type,name) EXPORT_METHOD type CPROC name
 #else
-#define NETWORK_PROC(type,name) IMPORT_METHOD type CPROC name
+#define PROCREG_PROC(type,name) IMPORT_METHOD type CPROC name
 #endif
 #ifdef __cplusplus
-#define _NETWORK_NAMESPACE  namespace network {
-#define _NETWORK_NAMESPACE_END }
-#define _TCP_NAMESPACE  namespace tcp {
-#define _TCP_NAMESPACE_END }
-#define USE_TCP_NAMESPACE using namespace tcp;
-#define _UDP_NAMESPACE  namespace udp {
-#define _UDP_NAMESPACE_END }
-#define USE_UDP_NAMESPACE using namespace tcp;
-#else
-#define _NETWORK_NAMESPACE
-#define _NETWORK_NAMESPACE_END
-#define _TCP_NAMESPACE
-#define _TCP_NAMESPACE_END
-#define _UDP_NAMESPACE
-#define _UDP_NAMESPACE_END
-#define USE_TCP_NAMESPACE
-#define USE_UDP_NAMESPACE
+#ifdef __cplusplus_cli
+//using namespace System;
 #endif
-#define SACK_NETWORK_NAMESPACE  SACK_NAMESPACE _NETWORK_NAMESPACE
-#define SACK_NETWORK_NAMESPACE_END _NETWORK_NAMESPACE_END SACK_NAMESPACE_END
-#define SACK_NETWORK_TCP_NAMESPACE  SACK_NAMESPACE _NETWORK_NAMESPACE _TCP_NAMESPACE
-#define SACK_NETWORK_TCP_NAMESPACE_END _TCP_NAMESPACE_END _NETWORK_NAMESPACE_END SACK_NAMESPACE_END
-#define SACK_NETWORK_UDP_NAMESPACE  SACK_NAMESPACE _NETWORK_NAMESPACE _UDP_NAMESPACE
-#define SACK_NETWORK_UDP_NAMESPACE_END _UDP_NAMESPACE_END _NETWORK_NAMESPACE_END SACK_NAMESPACE_END
+#   define _INTERFACE_NAMESPACE namespace Interface {
+#   define _INTERFACE_NAMESPACE_END }
+#define PROCREG_NAMESPACE namespace sack { namespace app { namespace registry {
+#define _PROCREG_NAMESPACE namespace registry {
+#define _APP_NAMESPACE namespace app {
+#define PROCREG_NAMESPACE_END }}}
+//extern "C"  {
+#else
+#   define _INTERFACE_NAMESPACE
+#   define _INTERFACE_NAMESPACE_END
+#define _PROCREG_NAMESPACE
+#define _APP_NAMESPACE
+#define PROCREG_NAMESPACE
+#define PROCREG_NAMESPACE_END
+#endif
 SACK_NAMESPACE
-	/* Event based networking interface.
-	   Example
-	   \Example One : A simple client side application. Reads
-	   standard input, and writes it to a server it connects to. Read
-	   the network and write as standard output.
-	   <code lang="c++">
-	   \#include \<network.h\>
-	   </code>
-	   <code>
-	   \#include \<logging.h\>
-	   \#include \<sharemem.h\>
-	   </code>
-	   <code lang="c++">
-	   void CPROC ReadComplete( PCLIENT pc, void *bufptr, int sz )
-	   {
-	      char *buf = (char*)bufptr;
-	       if( buf )
-	       {
-	           buf[sz] = 0;
-	           printf( "%s", buf );
-	           fflush( stdout );
-	       }
-	       else
-	       {
-	           buf = (char*)Allocate( 4097 );
-	           //SendTCP( pc, "Yes, I've connected", 12 );
-	       }
-	       ReadTCP( pc, buf, 4096 );
-	   }
-	   PCLIENT pc_user;
-	   void CPROC Closed( PCLIENT pc )
-	   {
-	      pc_user = NULL;
-	   }
-	   int main( int argc, char** argv )
-	   {
-	       SOCKADDR *sa;
-	       if( argc \< 2 )
-	       {
-	           printf( "usage: %s \<Telnet IP[:port]\>\\n", argv[0] );
-	           return 0;
-	       }
-	       SystemLog( "Starting the network" );
-	       NetworkStart();
-	       SystemLog( "Started the network" );
-	       sa = CreateSockAddress( argv[1], 23 );
-	       pc_user = OpenTCPClientAddrEx( sa, ReadComplete, Closed, NULL, 0 );
-	       if( !pc_user )
-	       {
-	           SystemLog( "Failed to open some port as telnet" );
-	           printf( "failed to open %s%s\\n", argv[1], strchr(argv[1],':')?"":":telnet[23]" );
-	           return 0;
-	       }
-	      //SendTCP( pc_user, "Some data here...", 12 );
-	       while( pc_user )
-	       {
-	           char buf[256];
-	           if( !fgets( buf, 256, stdin ) )
-	           {
-	               RemoveClient( pc_user );
-	               return 0;
-	           }
-	           SendTCP( pc_user, buf, strlen( buf ) );
-	       }
-	       return -1;
-	   }
-	   </code>
-	   \Example Two : A server application, opens a socket that it
-	   accepts connections on. Reads the socket, and writes the
-	   information it reads back to the socket as an echo.
-	   <code lang="c++">
-	   \#include \<stdhdrs.h\>
-	   \#include \<sharemem.h\>
-	   \#include \<timers.h\>
-	   \#include \<network.h\>
-	   void CPROC ServerRecieve( PCLIENT pc, POINTER buf, int size )
-	   {
-	       //int bytes;
-	       if( !buf )
-	       {
-	           buf = Allocate( 4096 );
-	           //SendTCP( pc, (void*)"Hi, welccome to...", 15 );
-	       }
-	       //else
-	           //SendTCP( pc, buf, size );
-	       // test for waitread support...
-	       // read will not result until the data is read.
-	       //bytes = WaitReadTCP( pc, buf, 4096 );
-	       //if( bytes \> 0 )
-	       //   SendTCP( pc, buf, bytes );
-	       ReadTCP( pc, buf, 4095 );
-	       // buffer does not have anything in it....
-	   }
-	   void CPROC ClientConnected( PCLIENT pListen, PCLIENT pNew )
-	   {
-	       SetNetworkReadComplete( pNew, ServerRecieve );
-	   }
-	   int main( int argc, char **argv )
-	   {
-	       PCLIENT pcListen;
-	       SOCKADDR *port;
-	       if( argc \< 2 )
-	       {
-	           printf( "usage: %s \<listen port\> (defaulting to telnet)\\n", argv[0] );
-	           port = CreateSockAddress( "localhost:23", 23 );
-	       }
-	       else
-	           port = CreateSockAddress( argv[1], 23 );
-	       NetworkStart();
-	       pcListen = OpenTCPListenerAddrEx( port, ClientConnected );
-	       if(pcListen)
-	           while(1) WakeableSleep( SLEEP_FOREVER );
-	       else
-	           printf( "Failed to listen on port %s\\n", argv[1] );
-	       return 0;
-	   }
-	   </code>                                                                                    */
-	_NETWORK_NAMESPACE
-//#ifndef CLIENT_DEFINED
-typedef struct NetworkClient *PCLIENT;
-//typedef struct Client
-//{
-//   unsigned char Private_Structure_information_here;
-//}CLIENT, *PCLIENT;
-//#endif
-NETWORK_PROC( CTEXTSTR, GetSystemName )( void );
-NETWORK_PROC( PCLIENT, NetworkLockEx )( PCLIENT pc, int readWrite DBG_PASS );
-NETWORK_PROC( void, NetworkUnlockEx )( PCLIENT pc, int readWrite DBG_PASS );
-/* <combine sack::network::NetworkLockEx@PCLIENT pc>
-   \ \                                               */
-#define NetworkLock(pc,rw) NetworkLockEx( pc,rw DBG_SRC )
-/* <combine sack::network::NetworkUnlockEx@PCLIENT pc>
-   \ \                                                 */
-#define NetworkUnlock(pc,rw) NetworkUnlockEx( pc,rw DBG_SRC )
-typedef void (CPROC*cReadComplete)(PCLIENT, POINTER, size_t );
-typedef void (CPROC*cReadCompleteEx)(PCLIENT, POINTER, size_t, SOCKADDR * );
-typedef void (CPROC*cCloseCallback)(PCLIENT);
-typedef void (CPROC*cWriteComplete)(PCLIENT );
-typedef void (CPROC*cNotifyCallback)(PCLIENT server, PCLIENT newClient);
-typedef void (CPROC*cConnectCallback)(PCLIENT, int);
-typedef void (CPROC*cppReadComplete)(uintptr_t, POINTER, size_t );
-typedef void (CPROC*cppReadCompleteEx)(uintptr_t,POINTER, size_t, SOCKADDR * );
-typedef void (CPROC*cppCloseCallback)(uintptr_t);
-typedef void (CPROC*cppWriteComplete)(uintptr_t );
-typedef void (CPROC*cppNotifyCallback)(uintptr_t, PCLIENT newClient);
-typedef void (CPROC*cppConnectCallback)(uintptr_t, int);
-NETWORK_PROC( void, SetNetworkWriteComplete )( PCLIENT, cWriteComplete );
+/* Deadstart is support which differs per compiler, but allows
+   applications access a C++ feature - static classes with
+   constructors that initialize at loadtime, but, have the
+   feature that you can create threads. Deadstart code is run
+   after the DLL load lock under windows that prevents creation
+   of threads; however, deadstart is run before main. Deadstart
+   routines can have a priority. Certain features require others
+   to be present always. This allows explicit control of
+   priority unlink using classes with static constructors, which
+   requires ordering of objects to provide linking order. Also
+   provides a similar registration mechanism for atexit, but
+   extending with priority. Deadstop registrations are done
+   sometime during normal C atexit() handling, but may be
+   triggered first by calling BAG_Exit.
+   Registry offers support to register functions, and data under
+   a hierarchy of names. Names are kept in a string cache, which
+   applications can take benefit of. Strings will exist only a
+   single time. This table could be saved, and a look-aside
+   table for language translation purposes. Registry is the
+   support that the latest PSI relies on for registering event
+   callbacks for controls. The registry was always used, but,
+   the access to it was encapsulated by DoRegisterControl
+   registering the appropriate methods.                          */
+	_APP_NAMESPACE
+   /* Contains methods dealing with registering routines and values
+      in memory. Provisions are available to save the configuration
+      state, but the best that can be offered here would be a
+      translation tool for text strings. The namespace is savable,
+      but most of the content of the registration space are short
+      term pointers. Namespace containing registry namespace.
+      old notes - very discongruant probably should delete them.
+      Process name registry
+      it's a tree of names.
+      there are paths, and entries
+      paths are represented as class_name
+      PCLASSROOT is also a suitable class name
+      PCLASSROOT is defined as a valid CTEXTSTR.
+      there is (apparently) a name that is not valid as a path name
+      that is TREE
+      guess.
+      POINTER in these two are equal to (void(*)(void)) but -
+      that's rarely the most useful thing... so
+      name class is a tree of keys... /\<...\>
+      psi/control/## might contain procs Init Destroy Move
+      RegAlias( "psi/control/3", "psi/control/button"
+      ); psi/control/button and psi/control/3 might reference the
+      same routines
+      psi/frame Init Destroy Move memlib Alloc Free
+      network/tcp
+      I guess name class trees are somewhat shallow at the moment
+      not going beyond 1-3 layers
+      names may eventually be registered and reference out of body
+      services, even out of box...
+      the values passed as returntype and parms/args need not be
+      real genuine types, but do need to be consistant between the
+      registrant and the requestor... this provides for full name
+      dressing, return type and paramter type may both cause
+      overridden functions to occur...                              */
+_PROCREG_NAMESPACE
+#ifndef REGISTRY_STRUCTURE_DEFINED
+	// make these a CTEXTSTR to be compatible with name_class...
 #ifdef __cplusplus
-/* <combine sack::network::SetNetworkWriteComplete@PCLIENT@cWriteComplete>
-   \ \                                                                     */
-NETWORK_PROC( void, SetCPPNetworkWriteComplete )( PCLIENT, cppWriteComplete, uintptr_t );
-#endif
-/* <combine sack::network::SetNetworkWriteComplete@PCLIENT@cWriteComplete>
-   \ \                                                                     */
-#define SetWriteCallback SetNetworkWriteComplete
-NETWORK_PROC( void, SetNetworkReadComplete )( PCLIENT, cReadComplete );
-#ifdef __cplusplus
-/* <combine sack::network::SetNetworkReadComplete@PCLIENT@cReadComplete>
-   \ \                                                                   */
-NETWORK_PROC( void, SetCPPNetworkReadComplete )( PCLIENT, cppReadComplete, uintptr_t );
-#endif
-/* <combine sack::network::SetNetworkReadComplete@PCLIENT@cReadComplete>
-   \ \                                                                   */
-#define SetReadCallback SetNetworkReadComplete
-NETWORK_PROC( void, SetNetworkCloseCallback )( PCLIENT, cCloseCallback );
-#ifdef __cplusplus
-/* <combine sack::network::SetNetworkCloseCallback@PCLIENT@cCloseCallback>
-   \ \                                                                     */
-NETWORK_PROC( void, SetCPPNetworkCloseCallback )( PCLIENT, cppCloseCallback, uintptr_t );
-#endif
-/* <combine sack::network::SetNetworkCloseCallback@PCLIENT@cCloseCallback>
-   \ \                                                                     */
-#define SetCloseCallback SetNetworkCloseCallback
- // wwords is BYTES and wClients=16 is defaulted to 16
-#ifdef __LINUX__
-NETWORK_PROC( LOGICAL, NetworkWait )(POINTER unused,uint32_t wClients,int wUserData);
+	// because of name mangling and stronger type casting
+	// it becomes difficult to pass a tree_def_tag * as a CTEXTSTR classname
+	// as valid as this is.
+	typedef struct tree_def_tag const * PCLASSROOT;
 #else
-NETWORK_PROC( LOGICAL, NetworkWait )(HWND hWndNotify,uint32_t wClients,int wUserData);
+	typedef CTEXTSTR PCLASSROOT;
 #endif
-/* <combine sack::network::NetworkWait@HWND@uint16_t@int>
-   \ \                                               */
-#define NetworkStart() NetworkWait( NULL, 0, 0 )
- // returns true if network layer still active...
-NETWORK_PROC( LOGICAL, NetworkAlive )( void );
-/* Shutdown these network services, stop the network thread, and
-   close all sockets open, releasing all internal resources.
+	typedef void (CPROC *PROCEDURE)(void);
+#ifdef __cplusplus_cli
+	typedef void (__stdcall *STDPROCEDURE)(array<System::Object^>^);
+#endif
+#else
+	typedef struct tree_def_tag const * PCLASSROOT;
+	typedef void (CPROC *PROCEDURE)(void);
+#ifdef __cplusplus_cli
+	typedef void (__stdcall *STDPROCEDURE)(array<System::Object^>^);
+#endif
+#endif
+/* CheckClassRoot reads for a path of names, but does not create
+   it if it does not exist.                                      */
+PROCREG_PROC( PCLASSROOT, CheckClassRoot )( CTEXTSTR class_name );
+/* \Returns a PCLASSROOT of a specified path. The path may be
+   either a PCLASSROOT or a text string indicating the path. the
+   Ex versions allow passing a base PCLASSROOT path and an
+   additional subpath to get. GetClassRoot will always create
+   the path if it did not exist before, and will always result
+   with a root.
+   Remarks
+   a CTEXTSTR (plain text string, probably wide character if
+   compiled unicode) and a PCLASSROOT are always
+   interchangeable. Though you may need a forced type cast, I
+   have defined both CTEXTSTR and PCLASSROOT function overloads
+   for c++ compiled code, and C isn't so unkind about the
+   conversion. I think problem might lie that CTEXTSTR has a
+   const qualifier and PCLASSROOT doesn't (but should).
+   Example
+   <code lang="c++">
+   PCLASSROOT root = GetClassRoot( "psi/resource" );
+   // returns the root of all resource names.
+   </code>
+   <code>
+   PCLASSROOT root2 = GetClassRootEx( "psi/resource", "buttons" );
+   </code>                                                         */
+PROCREG_PROC( PCLASSROOT, GetClassRoot )( CTEXTSTR class_name );
+/* <combine sack::app::registry::GetClassRoot@CTEXTSTR>
+   \ \                                                  */
+PROCREG_PROC( PCLASSROOT, GetClassRootEx )( PCLASSROOT root, CTEXTSTR name_class );
+#ifdef __cplusplus
+/* <combine sack::app::registry::GetClassRoot@CTEXTSTR>
+   \ \                                                  */
+PROCREG_PROC( PCLASSROOT, GetClassRoot )( PCLASSROOT class_name );
+/* <combine sack::app::registry::GetClassRoot@CTEXTSTR>
+   \ \                                                  */
+PROCREG_PROC( PCLASSROOT, GetClassRootEx )( PCLASSROOT root, PCLASSROOT name_class );
+#endif
+/* Fills a string with the path name to the specified node */
+PROCREG_PROC( int, GetClassPath )( TEXTSTR out, size_t len, PCLASSROOT root );
+PROCREG_PROC( void, SetInterfaceConfigFile )( TEXTCHAR *filename );
+/* Get[First/Next]RegisteredName( "classname", &amp;data );
+   these operations are not threadsafe and multiple thread
+   accesses will cause mis-stepping
+   These functions as passed the address of a POINTER. this
+   POINTER is for the use of the browse routines and should is
+   meaningless to he calling application.
    Parameters
-   None.                                                         */
-NETWORK_PROC( int, NetworkQuit )(void);
-// preferred method is to call Idle(); if in doubt.
-//NETWORK_PROC( int, ProcessNetworkMessages )( void );
-// dwIP would be for 1.2.3.4  (0x01020304 - memory 04 03 02 01) - host order
-// VERY RARE!
-NETWORK_PROC( SOCKADDR *, CreateAddress_hton )( uint32_t dwIP,uint16_t nHisPort);
-// dwIP would be for 1.2.3.4  (0x04030201 - memory 01 02 03 04) - network order
-#ifndef WIN32
-NETWORK_PROC( SOCKADDR *, CreateUnixAddress )( CTEXTSTR path );
+   root :       The root to search from
+   classname :  A sub\-path from the root to search from
+   data :       the address of a pointer that keeps track of
+                information about the search. (opaque to user)
+   Example
+   Usage:
+   <code lang="c++">
+   CTEXTSTR result;
+   POINTER data = NULL;
+   for( result = GetFirstRegisteredName( "some/class/path", &amp;data );
+        \result;
+        \result = GetNextRegisteredName( &amp;data ) )
+   {
+        // result is a string name of the current node.
+        // can use that name and GetRegistered____ (function/int/value)
+        if( NameHasBranches( &amp;data ) ) // for consitancy in syntax
+        {
+            // consider recursing through tree, name becomes a valid classname for GetFirstRegisteredName()
+        }
+   }
+   </code>                                                                                                  */
+PROCREG_PROC( CTEXTSTR, GetFirstRegisteredNameEx )( PCLASSROOT root, CTEXTSTR classname, PCLASSROOT *data );
+#ifdef __cplusplus
+/* <combine sack::app::registry::GetFirstRegisteredNameEx@PCLASSROOT@CTEXTSTR@PCLASSROOT *>
+   \ \                                                                                      */
+	PROCREG_PROC( CTEXTSTR, GetFirstRegisteredName )( PCLASSROOT classname, PCLASSROOT *data );
 #endif
-NETWORK_PROC( SOCKADDR *, CreateAddress )( uint32_t dwIP,uint16_t nHisPort);
-NETWORK_PROC( SOCKADDR *, SetAddressPort )( SOCKADDR *pAddr, uint16_t nDefaultPort );
-NETWORK_PROC( SOCKADDR *, SetNonDefaultPort )( SOCKADDR *pAddr, uint16_t nDefaultPort );
+/* <combine sack::app::registry::GetFirstRegisteredNameEx@PCLASSROOT@CTEXTSTR@PCLASSROOT *>
+   \ \                                                                                      */
+PROCREG_PROC( CTEXTSTR, GetFirstRegisteredName )( CTEXTSTR classname, PCLASSROOT *data );
+/* Steps to the next registered name being browsed. Is passed
+   only the pointer to data. See GetFirstRegisteredName for
+   usage.
+   See Also
+   <link sack::app::registry::GetFirstRegisteredNameEx@PCLASSROOT@CTEXTSTR@PCLASSROOT *, sack::app::registry::GetFirstRegisteredNameEx Function> */
+PROCREG_PROC( CTEXTSTR, GetNextRegisteredName )( PCLASSROOT *data );
+/* When using GetFirstRegisteredName and GetNextRegisteredName
+   to browse through names, this function is able to get the
+   current PCLASSROOT of the current node, usually you end up
+   with just the content of that registered name.
+   \result with the current node ( useful for pulling registered
+   subvalues like description, or file and line )
+                                                                 */
+PROCREG_PROC( PCLASSROOT, GetCurrentRegisteredTree )( PCLASSROOT *data );
+#ifdef __cplusplus
+//PROCREG_PROC( CTEXTSTR, GetFirstRegisteredName )( CTEXTSTR classname, POINTER *data );
+//PROCREG_PROC( CTEXTSTR, GetNextRegisteredName )( POINTER *data );
+#endif
+// while doing a scan for registered procedures, allow applications to check for branches
+//PROCREG_PROC( int, NameHasBranches )( POINTER *data );
+PROCREG_PROC( int, NameHasBranches )( PCLASSROOT *data );
+// while doing a scan for registered procedures, allow applications to ignore aliases...
+PROCREG_PROC( int, NameIsAlias )( PCLASSROOT *data );
 /*
- * this is the preferred method to create an address
- * name may be "* / *" with a slash, then the address result will be a unix socket (if supported)
- * name may have an options ":port" port number associated, if there is no port, then the default
- * port is used.
+ * RegisterProcedureExx(
  *
  */
-NETWORK_PROC( SOCKADDR *, CreateSockAddress )( CTEXTSTR name, uint16_t nDefaultPort );
+ // root name or PCLASSROOT of base path
+PROCREG_PROC( int, RegisterProcedureExx )( PCLASSROOT root
+ // an additional path on root
+													  , CTEXTSTR name_class
+ // the name of the value entry saved in the tree
+													  , CTEXTSTR public_name
+ // the text return type of this function - may be checked to validate during GetRegisteredProcedure
+													  , CTEXTSTR returntype
+ // name of the library this symbol is in - may be checked to validate during GetRegisteredProcedure
+													  , CTEXTSTR library
+ // actual C function name in library - may be checked to validate during GetRegisteredProcedure
+													  , CTEXTSTR name
+ // preferably the raw argument string of types and no variable references "([type][,type]...)"
+													  , CTEXTSTR args
+ // file and line of the calling application.  May be no parameter in release mode.
+													  DBG_PASS
+													  );
 /*
- * set (*data) and (*datalen) to a binary buffer representation of the sockete address.
+ * RegisterProcedureEx( root       // root path
+ *                    , name_class // additional name
+ *                    , nice_name  // nice name
+ *                    , return type not in quotes  'void'
+ *                    , function_name in quotes '"Function"'
+ *                    , args not in quotes '(int,char,float,UserType*)'
  */
-NETWORK_PROC( void, GetNetworkAddressBinary )( SOCKADDR *addr, uint8_t **data, size_t *datalen );
+#define RegisterProcedureEx(root,nc,n,rtype,proc,args)  RegisterProcedureExx( (root),(nc),(n),#rtype,TARGETNAME,(proc), #args DBG_SRC)
 /*
- * create a socket address form data and datalen binary buffer representation of the sockete address.
+ * RegisterProcedure( name_class // additional name
+ *                    , nice_name  // nice name
+ *                    , return type not in quotes  'void'
+ *                    , function_name in quotes '"Function"'
+ *                    , args not in quotes '(int,char,float,UserType*)'
  */
-NETWORK_PROC( SOCKADDR *, MakeNetworkAddressFromBinary )( uintptr_t *data, size_t datalen );
-NETWORK_PROC( SOCKADDR *, CreateRemote )( CTEXTSTR lpName,uint16_t nHisPort);
-NETWORK_PROC( SOCKADDR *, CreateLocal )(uint16_t nMyPort);
-NETWORK_PROC( int, GetAddressParts )( SOCKADDR *pAddr, uint32_t *pdwIP, uint16_t *pwPort );
- // release a socket resource that has been created by an above routine
-NETWORK_PROC( void, ReleaseAddress )(SOCKADDR *lpsaAddr);
-// result with TRUE if equal, else FALSE
-NETWORK_PROC( LOGICAL, CompareAddress )(SOCKADDR *sa1, SOCKADDR *sa2 );
-#define SA_COMPARE_FULL 1
-#define SA_COMPARE_IP   0
-NETWORK_PROC( LOGICAL, CompareAddressEx )(SOCKADDR *sa1, SOCKADDR *sa2, int method );
+#define RegisterProcedure(nc,n,rtype,proc,args)  RegisterProcedureExx( NULL, (nc),(n),#rtype,TARGETNAME,(proc), #args DBG_SRC)
 /*
- * compare this address to see if it is any of my IPv4 interfaces
+ * Branches on the tree may be aliased together to form a single branch
+ *
  */
-NETWORK_PROC( LOGICAL, IsThisAddressMe )( SOCKADDR *addr, uint16_t myport );
-/*
- *  Get the list of SOCKADDR addresses that are on this box (for this name)
- */
-NETWORK_PROC( PLIST, GetLocalAddresses )( void );
-/*
- * Return the text of a socket's IP address
- */
-NETWORK_PROC( const char *, GetAddrName )( SOCKADDR *addr );
-/*
- * Return the numeric form of the address (might have been created by name).
- */
-NETWORK_PROC( const char *, GetAddrString )(SOCKADDR *addr);
-/*
- * test an address to see if it is v6 (switch connect From behavior at application level)
- */
-NETWORK_PROC( LOGICAL, IsAddressV6 )( SOCKADDR *addr );
-/*
- *  Duplicate a sockaddr appropriately for the specified network.
- *  SOCKADDR has in(near) it the size of the address block, so this
- * can safely duplicate the the right amount of memory.
- */
- // return a copy of this address...
-NETWORK_PROC( SOCKADDR *, DuplicateAddressEx )( SOCKADDR *pAddr DBG_PASS );
-#define DuplicateAddress(a) DuplicateAddressEx( a DBG_SRC )
-NETWORK_PROC( void, SackNetwork_SetSocketSecure )( PCLIENT lpClient );
-NETWORK_PROC( void, SackNetwork_AllowSecurityDowngrade )( PCLIENT lpClient );
-/* Transmission Control Protocol connection methods. This
-   controls opening sockets that are based on TCP.        */
-_TCP_NAMESPACE
+				// RegisterClassAlias( "psi/control/button", "psi/control/3" );
+				// then the same set of values can be referenced both ways with
+				// really only a single modified value.
+/* parameters to RegisterClassAliasEx are the original name, and the new alias name for the origianl branch*/
+PROCREG_PROC( PCLASSROOT, RegisterClassAliasEx )( PCLASSROOT root, CTEXTSTR original, CTEXTSTR alias );
+/* <combine sack::app::registry::RegisterClassAliasEx@PCLASSROOT@CTEXTSTR@CTEXTSTR>
+   \ \                                                                              */
+PROCREG_PROC( PCLASSROOT, RegisterClassAlias )( CTEXTSTR original, CTEXTSTR newalias );
+// root, return, public, args, address
+PROCREG_PROC( PROCEDURE, ReadRegisteredProcedureEx )( PCLASSROOT root
+                                                    , CTEXTSTR returntype
+																	 , CTEXTSTR parms
+																  );
+#define ReadRegisteredProcedure( root,rt,a) ((rt(CPROC*)a)ReadRegisteredProcedureEx(root,#rt,#a))
+/* Gets a function that has been registered. */
+PROCREG_PROC( PROCEDURE, GetRegisteredProcedureExxx )( PCLASSROOT root
+																	 , PCLASSROOT name_class
+                                                    , CTEXTSTR returntype
+																	 , CTEXTSTR name
+																	 , CTEXTSTR parms
+																	 );
+#define GetRegisteredProcedureExx(root,nc,rt,n,a) ((rt (CPROC*)a)GetRegisteredProcedureExxx(root,nc,#rt,n,#a))
+#define GetRegisteredProcedure2(nc,rtype,name,args) (rtype (CPROC*)args)GetRegisteredProcedureEx((nc),#rtype, name, #args )
+#define GetRegisteredProcedureNonCPROC(nc,rtype,name,args) (rtype (*)args)GetRegisteredProcedureEx((nc),#rtype, name, #args )
+/* <combine sack::app::registry::GetRegisteredProcedureExxx@PCLASSROOT@PCLASSROOT@CTEXTSTR@CTEXTSTR@CTEXTSTR>
+   \ \                                                                                                        */
+PROCREG_PROC( PROCEDURE, GetRegisteredProcedureEx )( PCLASSROOT name_class
+																	, CTEXTSTR returntype
+																	, CTEXTSTR name
+																	, CTEXTSTR parms
+																	);
+PROCREG_PROC( LOGICAL, RegisterFunctionExx )( PCLASSROOT root
+													, PCLASSROOT name_class
+													, CTEXTSTR public_name
+													, CTEXTSTR returntype
+													, PROCEDURE proc
+													 , CTEXTSTR args
+													 , CTEXTSTR library
+													 , CTEXTSTR real_name
+													  DBG_PASS
+														  );
 #ifdef __cplusplus
-/* <combine sack::network::tcp::OpenTCPListenerAddrEx@SOCKADDR *@cNotifyCallback>
-   \ \                                                                            */
-NETWORK_PROC( PCLIENT, CPPOpenTCPListenerAddrExx )( SOCKADDR *, cppNotifyCallback NotifyCallback, uintptr_t psvConnect DBG_PASS );
-#define CPPOpenTCPListenerAddrEx(a,b,c)  CPPOpenTCPListenerAddrExx(a,b,c DBG_SRC )
+/* <combine sack::app::registry::GetRegisteredProcedureExxx@PCLASSROOT@PCLASSROOT@CTEXTSTR@CTEXTSTR@CTEXTSTR>
+   \ \                                                                                                        */
+PROCREG_PROC( PROCEDURE, GetRegisteredProcedureExxx )( CTEXTSTR root
+																	 , CTEXTSTR name_class
+                                                    , CTEXTSTR returntype
+																	 , CTEXTSTR name
+																	 , CTEXTSTR parms
+																	 );
+/* <combine sack::app::registry::GetRegisteredProcedureExxx@PCLASSROOT@PCLASSROOT@CTEXTSTR@CTEXTSTR@CTEXTSTR>
+   \ \                                                                                                        */
+PROCREG_PROC( PROCEDURE, GetRegisteredProcedureExxx )( CTEXTSTR root
+																	 , PCLASSROOT name_class
+                                                    , CTEXTSTR returntype
+																	 , CTEXTSTR name
+																	 , CTEXTSTR parms
+																	 );
+/* <combine sack::app::registry::GetRegisteredProcedureExxx@PCLASSROOT@PCLASSROOT@CTEXTSTR@CTEXTSTR@CTEXTSTR>
+   \ \                                                                                                        */
+PROCREG_PROC( PROCEDURE, GetRegisteredProcedureExxx )( PCLASSROOT root
+																	 , CTEXTSTR name_class
+                                                    , CTEXTSTR returntype
+																	 , CTEXTSTR name
+																	 , CTEXTSTR parms
+																	 );
+/* <combine sack::app::registry::GetRegisteredProcedureExxx@PCLASSROOT@PCLASSROOT@CTEXTSTR@CTEXTSTR@CTEXTSTR>
+   \ \                                                                                                        */
+PROCREG_PROC( PROCEDURE, GetRegisteredProcedureEx )( CTEXTSTR name_class
+																	, CTEXTSTR returntype
+																	, CTEXTSTR name
+																	, CTEXTSTR parms
+																	);
+PROCREG_PROC( LOGICAL, RegisterFunctionExx )( CTEXTSTR root
+													, CTEXTSTR name_class
+													, CTEXTSTR public_name
+													, CTEXTSTR returntype
+                                       , PROCEDURE proc
+													 , CTEXTSTR args
+													 , CTEXTSTR library
+													 , CTEXTSTR real_name
+													  DBG_PASS
+														  );
 #endif
-/* Opens a TCP socket which listens for connections. Other TCP
-   sockets may be connected to this one once it has been
-   created.
+//#define RegisterFunctionExx( r,nc,p,rt,proc,ar ) RegisterFunctionExx( r,nc,p,rt,proc,ar,TARGETNAME,NULL DBG_SRC )
+//#define RegisterFunctionEx(r,nc,pn,rt,proc,args,lib,rn) RegisterFunctionExx(r,nc,pn,rt,proc,args,lib,rn DBG_SRC)
+#define RegisterFunctionEx( root,proc,rt,pn,a) RegisterFunctionExx( root,NULL,pn,rt,(PROCEDURE)(proc),a,NULL,NULL DBG_SRC )
+#define RegisterFunction( nc,proc,rt,pn,a) RegisterFunctionExx( (PCLASSROOT)NULL,nc,pn,rt,(PROCEDURE)(proc),a,TARGETNAME,NULL DBG_SRC )
+#define SimpleRegisterMethod(r,proc,rt,name,args) RegisterFunctionExx(r,NULL,name,rt,(PROCEDURE)proc,args,NULL,NULL DBG_SRC )
+#define GetRegisteredProcedure(nc,rtype,name,args) (rtype (CPROC*)args)GetRegisteredProcedureEx((nc),#rtype, #name, #args )
+PROCREG_PROC( int, RegisterIntValueEx )( PCLASSROOT root, CTEXTSTR name_class, CTEXTSTR name, uintptr_t value );
+PROCREG_PROC( int, RegisterIntValue )( CTEXTSTR name_class, CTEXTSTR name, uintptr_t value );
+PROCREG_PROC( int, RegisterValueExx )( PCLASSROOT root, CTEXTSTR name_class, CTEXTSTR name, int bIntVal, CTEXTSTR value );
+PROCREG_PROC( int, RegisterValueEx )( CTEXTSTR name_class, CTEXTSTR name, int bIntVal, CTEXTSTR value );
+PROCREG_PROC( int, RegisterValue )( CTEXTSTR name_class, CTEXTSTR name, CTEXTSTR value );
+/* \ \
    Parameters
-   Address :         address to serve at. See
-                     CreateSockAddress().
-   Port :            specified the port to listen at. This family
-                     that takes just a port FAILS if there are
-                     multiple network interfaces and or virtual
-                     private networks.
-   NotifyCallback :  user callback which will be invoked when a
-                     new connection to the TCP server has been
-                     made.
+   root :        Root class to start searching from
+   name_class :  An additional sub\-path to get the name from
+   name :        the name within the path specified
+   bIntVal :     a true/false whether to get the string or
+                 integer value from the specified node.
    Returns
-   NULL if no clients available, or if address bind on listen
-   side fails.
-   otherwise is a valid network connection to send and receive
-   UDP data on.
-   The read_complete callback, if specified, will be called,
-   with a NULL pointer and 0 size, before the connect complete.   */
-NETWORK_PROC( PCLIENT, OpenTCPListenerAddrExx )( SOCKADDR *, cNotifyCallback NotifyCallback DBG_PASS );
-#define OpenTCPListenerAddrEx(sa,ca) OpenTCPListenerAddrExx( sa, ca DBG_SRC )
-/* <combine sack::network::tcp::OpenTCPListenerAddrEx@SOCKADDR *@cNotifyCallback>
-   \ \                                                                            */
-#define OpenTCPListenerAddr( pAddr ) OpenTCPListenerAddrEx( paddr, NULL );
+   A pointer to a string if bIntVal is not set. (NULL if there
+   was no string).
+   Otherwise will be an int shorter than or equal to the size of
+   a pointer, which should be cast to an int if bIntVal is set,
+   and there is a value registered there. Probably 0 if no
+   value, so registered 0 value and no value is
+   indistinguisable.                                             */
+PROCREG_PROC( CTEXTSTR, GetRegisteredValueExx )( PCLASSROOT root, CTEXTSTR name_class, CTEXTSTR name, int bIntVal );
+/* <combine sack::app::registry::GetRegisteredValueExx@PCLASSROOT@CTEXTSTR@CTEXTSTR@int>
+   \ \                                                                                   */
+PROCREG_PROC( CTEXTSTR, GetRegisteredValueEx )( CTEXTSTR name_class, CTEXTSTR name, int bIntVal );
+/* <combine sack::app::registry::GetRegisteredValueExx@PCLASSROOT@CTEXTSTR@CTEXTSTR@int>
+   \ \                                                                                   */
+PROCREG_PROC( CTEXTSTR, GetRegisteredValue )( CTEXTSTR name_class, CTEXTSTR name );
 #ifdef __cplusplus
-/* <combine sack::network::tcp::OpenTCPListenerEx@uint16_t@cNotifyCallback>
-   \ \                                                                 */
-NETWORK_PROC( PCLIENT, CPPOpenTCPListenerExx )( uint16_t wPort, cppNotifyCallback NotifyCallback, uintptr_t psvConnect DBG_PASS );
-#define CPPOpenTCPListenerEx(a,b,c) CPPOpenTCPListenerExx(a,b,c DBG_SRC )
+/* <combine sack::app::registry::GetRegisteredValueExx@PCLASSROOT@CTEXTSTR@CTEXTSTR@int>
+   \ \                                                                                   */
+PROCREG_PROC( CTEXTSTR, GetRegisteredValueExx )( CTEXTSTR root, CTEXTSTR name_class, CTEXTSTR name, int bIntVal );
+PROCREG_PROC( int, RegisterIntValueEx )( CTEXTSTR root, CTEXTSTR name_class, CTEXTSTR name, uintptr_t value );
 #endif
-/* <combine sack::network::tcp::OpenTCPListenerAddrEx@SOCKADDR *@cNotifyCallback>
-   \ \                                                                            */
-NETWORK_PROC( PCLIENT, OpenTCPListenerExx )( uint16_t wPort, cNotifyCallback NotifyCallback DBG_PASS );
-#define OpenTCPListenerEx(a,b) OpenTCPListenerExx(a,b DBG_SRC )
-/* <combine sack::network::tcp::OpenTCPListenerEx@uint16_t@cNotifyCallback>
-   \ \                                                                 */
-#define OpenTCPListener( wPort )    OpenTCPListenerEx( wPort, NULL )
-/* <combine sack::network::tcp::OpenTCPListener>
-   \ \                                           */
-#define OpenTCPServer OpenTCPListener
-/* <combine sack::network::tcp::OpenTCPListenerEx@uint16_t@cNotifyCallback>
-   \ \                                                                 */
-#define OpenTCPServerEx OpenTCPListenerEx
-/* <combine sack::network::tcp::OpenTCPListenerAddrEx@SOCKADDR *@cNotifyCallback>
-   \ \                                                                            */
-#define OpenTCPServerAddr OpenTCPListenerAddr
-/* <combine sack::network::tcp::OpenTCPListenerEx@uint16_t@cNotifyCallback>
-   \ \                                                                 */
-#define OpenTCPServerAddrEx OpenTCPListenerAddrEx
-#define OPEN_TCP_FLAG_DELAY_CONNECT 1
+/* This is like GetRegisteredValue, but takes the address of the
+   type to return into instead of having to cast the final
+   \result.
+   if bIntValue, result should be passed as an (&amp;int)        */
+PROCREG_PROC( int, GetRegisteredStaticValue )( PCLASSROOT root, CTEXTSTR name_class, CTEXTSTR name
+															, CTEXTSTR *result
+															, int bIntVal );
+#define GetRegisteredStaticIntValue(r,nc,name,result) GetRegisteredStaticValue(r,nc,name,(CTEXTSTR*)result,TRUE )
+/* <combine sack::app::registry::GetRegisteredValueExx@PCLASSROOT@CTEXTSTR@CTEXTSTR@int>
+   \ \                                                                                   */
+PROCREG_PROC( int, GetRegisteredIntValueEx )( PCLASSROOT root, CTEXTSTR name_class, CTEXTSTR name );
+/* <combine sack::app::registry::GetRegisteredIntValueEx@PCLASSROOT@CTEXTSTR@CTEXTSTR>
+   \ \                                                                                 */
+PROCREG_PROC( int, GetRegisteredIntValue )( CTEXTSTR name_class, CTEXTSTR name );
 #ifdef __cplusplus
-/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
-   \ \                                                                                                                        */
-NETWORK_PROC( PCLIENT, CPPOpenTCPClientAddrExxx )(SOCKADDR *lpAddr,
-																  cppReadComplete  pReadComplete, uintptr_t,
-																  cppCloseCallback CloseCallback, uintptr_t,
-																  cppWriteComplete WriteComplete, uintptr_t,
-																  cppConnectCallback pConnectComplete,  uintptr_t, int DBG_PASS );
-#define CPPOpenTCPClientAddrExx(a,b,c,d,e,f,g,h,i,j) CPPOpenTCPClientAddrExxx(a,b,c,d,e,f,g,h,i,j DBG_SRC )
+/* <combine sack::app::registry::GetRegisteredIntValueEx@PCLASSROOT@CTEXTSTR@CTEXTSTR>
+   \ \                                                                                 */
+PROCREG_PROC( int, GetRegisteredIntValue )( PCLASSROOT name_class, CTEXTSTR name );
 #endif
-NETWORK_PROC( PCLIENT, OpenTCPClientAddrFromAddrEx )( SOCKADDR *lpAddr, SOCKADDR *pFromAddr
-                                                     , cReadComplete     pReadComplete
-                                                     , cCloseCallback    CloseCallback
-                                                     , cWriteComplete    WriteComplete
-                                                     , cConnectCallback  pConnectComplete
-                                                     , int flags
-                                                     DBG_PASS
-                                                     );
-#define OpenTCPClientAddrFromAddr( a,f,r,cl,wr,cc ) OpenTCPClientAddrFromAddrEx( a,f,r,cl,wr,cc, 0 DBG_SRC )
-NETWORK_PROC( PCLIENT, OpenTCPClientAddrFromEx )( SOCKADDR *lpAddr, int port
-                                                , cReadComplete     pReadComplete
-                                                , cCloseCallback    CloseCallback
-                                                , cWriteComplete    WriteComplete
-                                                , cConnectCallback  pConnectComplete
-                                                , int flags
-                                                DBG_PASS
-                                                );
-#define OpenTCPClientAddrFrom( a,f,r,cl,wr,cc ) OpenTCPClientAddrFromEx( a,f,r,cl,wr,cc,0 DBG_SRC )
-/* Opens a socket which connects to an already existing,
-   listening, socket.
+typedef void (CPROC*OpenCloseNotification)( POINTER, uintptr_t );
+#define PUBLIC_DATA( public, struct, open, close )	    PRELOAD( Data_##open##_##close ) {	 RegisterDataType( "system/data/structs"	        , public, sizeof(struct)	    , (OpenCloseNotification)open, (OpenCloseNotification)close ); }
+#define PUBLIC_DATA_EX( public, struct, open, update, close )	    PRELOAD( Data_##open##_##close ) {	 RegisterDataTypeEx( "system/data/structs"	        , public, sizeof(struct)	    , (OpenCloseNotification)open, (OpenCloseNotification)update, (OpenCloseNotification)close ); }
+#define GET_PUBLIC_DATA( public, type, instname )    (type*)CreateRegisteredDataType( "system/data/structs", public, instname )
+PROCREG_PROC( uintptr_t, RegisterDataType )( CTEXTSTR classname
+												 , CTEXTSTR name
+												 , uintptr_t size
+												 , OpenCloseNotification open
+												 , OpenCloseNotification close );
+/* Registers a structure as creatable in shared memory by name.
+   So a single name of the structure can be used to retrieve a
+   pointer to one created.
+   Example
+   \ \
+   <code lang="c++">
+   POINTER p = CreateRegisteredDataType( "My types", "my_registered_type", "my instance" );
+   // p will result to a region of type 'my_registered_type' called 'my_instance'
+   // if it did not exist, it will be created, otherwise the one existing is returned.
+   </code>
    Parameters
-   lpAddr :            _nt_
-   lpName :            lpName and wPort are passed to
-                       CreateSockAddress, and that address is
-                       passed as a lpAddr.
-   wPort :             lpName and wPort are passed to
-                       CreateSockAddress, and that address is
-                       passed as a lpAddr.
-   pReadComplete :     user callback which is invoked when a
-                       buffer now contains data.
-   CloseCallback :     user callback when this socket is closed.
-   WriteComplete :     user callback which is invoked when a
-                       write operation completes.
-   pConnectComplete :  user callback which is called when this
-                       client connects. The callback gets this
-                       network connection as the first parameter.
-   Remarks
-   WriteComplete is often unused, unless you are using bMsg
-   option on do
-   Returns
-   NULL if no clients available, or if address bind on listen
-   side fails.
-   otherwise is a valid network connection to send and receive
-   UDP data on.
-   The read_complete callback, if specified, will be called,
-   with a NULL pointer and 0 size, before the connect complete.   */
-NETWORK_PROC( PCLIENT, OpenTCPClientAddrExxx )(SOCKADDR *lpAddr,
-                                               cReadComplete  pReadComplete,
-                                               cCloseCallback CloseCallback,
-                                               cWriteComplete WriteComplete,
-                                               cConnectCallback pConnectComplete,
-                                               int flags
-                                               DBG_PASS );
-/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
-   \ \                                                                                                                        */
-#define OpenTCPClientAddrExx(a,r,clo,w,con) OpenTCPClientAddrExxx( a,r,clo,w,con,0 DBG_SRC )
+   root :          optional root name (ex version uses this)
+   classname :     path to the type
+   name :          name of the type to create an instance of
+   instancename :  a name for the instance created.                                         */
+PROCREG_PROC( uintptr_t, CreateRegisteredDataType)( CTEXTSTR classname
+																 , CTEXTSTR name
+																 , CTEXTSTR instancename );
+PROCREG_PROC( uintptr_t, RegisterDataTypeEx )( PCLASSROOT root
+													, CTEXTSTR classname
+													, CTEXTSTR name
+													, uintptr_t size
+													, OpenCloseNotification Open
+													, OpenCloseNotification Close );
+/* <combine sack::app::registry::CreateRegisteredDataType@CTEXTSTR@CTEXTSTR@CTEXTSTR>
+   \ \                                                                                */
+PROCREG_PROC( uintptr_t, CreateRegisteredDataTypeEx)( PCLASSROOT root
+																	, CTEXTSTR classname
+																	, CTEXTSTR name
+																	, CTEXTSTR instancename );
+/* Outputs through syslog a tree dump of all names registered. */
+PROCREG_PROC( void, DumpRegisteredNames )( void );
+/* Dumps through syslog all names registered from the specified
+   root point. (instead of dumping the whole tree)              */
+PROCREG_PROC( void, DumpRegisteredNamesFrom )( PCLASSROOT root );
+PROCREG_PROC( int, SaveTree )( void );
+PROCREG_PROC( int, LoadTree )( void );
+#define METHOD_PTR(type,name) type (CPROC *_##name)
+#define DMETHOD_PTR(type,name) type (CPROC **_##name)
+#define METHOD_ALIAS(i,name) ((i)->_##name)
+#define PDMETHOD_ALIAS(i,name) (*(i)->_##name)
+/* Releases an interface. When interfaces are registered, they
+   register with a OnGetInterface and an OnDropInterface
+   callback so that it may do additional work to cleanup from
+   giving you a copy of the interface.
+   Example
+   <code lang="c++">
+   POINTER p = GetInterface( "image" );
+   DropInterface( p );
+   </code>                                                     */
+PROCREG_PROC( void, DropInterface )( CTEXTSTR pServiceName, POINTER interface_x );
+PROCREG_PROC( POINTER, GetInterface_v4 )( CTEXTSTR pServiceName, LOGICAL ReadConfig, int quietFail DBG_PASS );
+#define GetInterfaceV4( a, b )  GetInterface_v4( a, FALSE, b DBG_SRC )
+/* \Returns the pointer to a registered interface. This is
+   typically a structure that contains pointer to functions. Takes
+   a text string to an interface. Interfaces are registered at a
+   known location in the registry tree.                            */
+PROCREG_PROC( POINTER, GetInterfaceDbg )( CTEXTSTR pServiceName DBG_PASS );
+#define GetInterface(n) GetInterfaceDbg( n DBG_SRC )
+#define GetRegisteredInterface(name) GetInterface(name)
+PROCREG_PROC( LOGICAL, RegisterInterfaceEx )( CTEXTSTR name, POINTER(CPROC*load)(void), void(CPROC*unload)(POINTER) DBG_PASS );
+//PROCREG_PROC( LOGICAL, RegisterInterface )(CTEXTSTR name, POINTER( CPROC*load )(void), void(CPROC*unload)(POINTER));
+#define RegisterInterface(n,l,u) RegisterInterfaceEx( n,l,u DBG_SRC )
+// unregister a function, should be smart and do full return type
+// and parameters..... but for now this only references name, this indicates
+// that this has not been properly(fully) extended, and should be layered
+// in such a way as to allow this function work in it's minimal form.
+PROCREG_PROC( int, ReleaseRegisteredFunctionEx )( PCLASSROOT root
+													, CTEXTSTR name_class
+													, CTEXTSTR public_name
+													  );
+#define ReleaseRegisteredFunction(nc,pn) ReleaseRegisteredFunctionEx(NULL,nc,pn)
+/* This is a macro used to paste two symbols together. */
+#define paste_(a,b) a##b
+#define paste(a,b) paste_(a,b)
+#define preproc_symbol(a)  a
 #ifdef __cplusplus
-/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
-   \ \                                                                                                                        */
-NETWORK_PROC( PCLIENT, CPPOpenTCPClientAddrEx )(SOCKADDR *
-                                               , cppReadComplete, uintptr_t
-                                               , cppCloseCallback, uintptr_t
-                                               , cppWriteComplete, uintptr_t
-                                               , int flags
-                                               );
+#define EXTRA_PRELOAD_SYMBOL _
+#else
+#define EXTRA_PRELOAD_SYMBOL
 #endif
-/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
-   \ \                                                                                                                        */
-NETWORK_PROC( PCLIENT, OpenTCPClientAddrExEx )(SOCKADDR *, cReadComplete,
-                         cCloseCallback, cWriteComplete DBG_PASS );
-/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
-   \ \                                                                                                                        */
-#define OpenTCPClientAddrEx(a,b,c,d) OpenTCPClientAddrExEx(a,b,c,d DBG_SRC )
-#ifdef __cplusplus
-/* <combine sack::network::tcp::OpenTCPClientExx@CTEXTSTR@uint16_t@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
-   \ \                                                                                                                      */
-NETWORK_PROC( PCLIENT, CPPOpenTCPClientExEx )(CTEXTSTR lpName,uint16_t wPort
-                         , cppReadComplete  pReadComplete, uintptr_t
-                         , cppCloseCallback CloseCallback, uintptr_t
-                         , cppWriteComplete WriteComplete, uintptr_t
-															, cppConnectCallback pConnectComplete, uintptr_t, int DBG_PASS );
-#define CPPOpenTCPClientExx(name,port,read,rd,close,cd,write,wd,connect,cod,flg) CPPOpenTCPClientExEx(name,port,read,rd,close,cd,write,wd,connect,cod,flg DBG_SRC)
-#endif
-/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
-   \ \                                                                                                                        */
-NETWORK_PROC( PCLIENT, OpenTCPClientExxx )(CTEXTSTR lpName,uint16_t wPort
-                                           , cReadComplete  pReadComplete
-                                           , cCloseCallback CloseCallback
-                                           , cWriteComplete WriteComplete
-                                           , cConnectCallback pConnectComplete
-                                           , int flags
-                                           DBG_PASS );
-/* <combine sack::network::tcp::OpenTCPClientAddrExx@SOCKADDR *@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
-   \ \                                                                                                                        */
-#define OpenTCPClientExx( lpName, wPort, pReadComplete, CloseCallback, WriteComplete, pConnectComplete ) OpenTCPClientExxx( lpName, wPort, pReadComplete, CloseCallback, WriteComplete, pConnectComplete, 0 DBG_SRC )
-/* <combine sack::network::tcp::OpenTCPClientExx@CTEXTSTR@uint16_t@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
-   \ \                                                                                                                      */
-#define OpenTCPClient( name, port, read ) OpenTCPClientExxx(name,port,read,NULL,NULL,NULL,0 DBG_SRC )
-/* <combine sack::network::tcp::OpenTCPClientExx@CTEXTSTR@uint16_t@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
-   \ \                                                                                                                      */
-NETWORK_PROC( PCLIENT, OpenTCPClientExEx )( CTEXTSTR, uint16_t, cReadComplete,
-													  cCloseCallback, cWriteComplete DBG_PASS );
-/* <combine sack::network::tcp::OpenTCPClientExx@CTEXTSTR@uint16_t@cReadComplete@cCloseCallback@cWriteComplete@cConnectCallback>
-   \ \                                                                                                                      */
-#define OpenTCPClientEx( addr,port,read,close,write ) OpenTCPClientExEx( addr,port,read,close,write DBG_SRC )
-/* Do the connect to
+#define DefineRegistryMethod2_i(task,name,classtype,methodname,desc,returntype,argtypes,line)	   CPROC paste(name,line)argtypes;	       PRIORITY_PRELOAD( paste(paste(paste(paste(Register,name),Method),preproc_symbol(EXTRA_PRELOAD_SYMBOL)),line), SQL_PRELOAD_PRIORITY ) {	  SimpleRegisterMethod( task "/" classtype, paste(name,line)	  , #returntype, methodname, #argtypes );    RegisterValue( task "/" classtype "/" methodname, "Description", desc ); }	                                                                          static returntype CPROC paste(name,line)
+#define DefineRegistryMethod2(task,name,classtype,methodname,desc,returntype,argtypes,line)	   DefineRegistryMethod2_i(task,name,classtype,methodname,desc,returntype,argtypes,line)
+/* Dekware uses this macro.
+     passes preload priority override.
+	 so it can register new internal commands before initial macros are run.
 */
-int NetworkConnectTCPEx( PCLIENT pc DBG_PASS );
-#define NetworkConnectTCP( pc ) NetworkConnectTCPEx( pc DBG_SRC )
-/* Drain is an operation on a TCP socket to just drop the next X
-   bytes. They are ignored and not stored into any user buffer.
-   Drain reads take precedence over any other queued reads.
+#define DefineRegistryMethod2P_i(priority,task,name,classtype,methodname,desc,returntype,argtypes,line)	   CPROC paste(name,line)argtypes;	       PRIORITY_PRELOAD( paste(paste(paste(paste(Register,name),Method),preproc_symbol(EXTRA_PRELOAD_SYMBOL)),line), priority ) {	  SimpleRegisterMethod( task "/" classtype, paste(name,line)	  , #returntype, methodname, #argtypes );    RegisterValue( task "/" classtype "/" methodname, "Description", desc ); }	                                                                          static returntype CPROC paste(name,line)
+/* This macro indirection is to resolve inner macros like "" around text.  */
+#define DefineRegistryMethod2P(priority,task,name,classtype,methodname,desc,returntype,argtypes,line)	   DefineRegistryMethod2P_i(priority,task,name,classtype,methodname,desc,returntype,argtypes,line)
+/*
+    This method is used by PSI/Intershell.
+	no description
+*/
+#define DefineRegistryMethod_i(task,name,classtype,classbase,methodname,returntype,argtypes,line)	   CPROC paste(name,line)argtypes;	       PRELOAD( paste(paste(Register##name##Button,preproc_symbol(EXTRA_PRELOAD_SYMBOL)),line) ) {	  SimpleRegisterMethod( task "/" classtype "/" classbase, paste(name,line)	  , #returntype, methodname, #argtypes ); }	                                                                          static returntype CPROC paste(name,line)
+#define DefineRegistryMethod(task,name,classtype,classbase,methodname,returntype,argtypes,line)	   DefineRegistryMethod_i(task,name,classtype,classbase,methodname,returntype,argtypes,line)
+/*
+#define _0_DefineRegistryMethod(task,name,classtype,classbase,methodname,returntype,argtypes,line)	   static returntype _1__DefineRegistryMethod(task,name,classtype,classbase,methodname,returntype,argtypes,line)
+#define DefineRegistryMethod(task,name,classtype,classbase,methodname,returntype,argtypes)	  _1__DefineRegistryMethod(task,name,classtype,classbase,methodname,returntype,argtypes,__LINE__)
+*/
+// this macro is used for ___DefineRegistryMethodP. Because this is used with complex names
+// an extra define wrapper of priority_preload must be used to fully resolve paramters.
+/*
+#define DefineRegistryMethodP(priority,task,name,classtype,classbase,methodname,returntype,argtypes,line)	   CPROC paste(name,line)argtypes;	       PRIOR_PRELOAD( paste(paset(Register##name##Button,preproc_symbol(EXTRA_PRELOAD_SYMBOL),line), priority ) {	  SimpleRegisterMethod( task "/" classtype "/" classbase, paste(name,line)	  , #returntype, methodname, #argtypes ); }	                                                                          static returntype CPROC paste(name,line)
+*/
+/* <combine sack::app::registry::SimpleRegisterMethod>
+   General form to build a registered procedure. Used by simple
+   macros to create PRELOAD'ed registered functions. This flavor
+   requires the user to provide 'static' and a return type that
+   matches the return type specified in the macro. This makes
+   usage most C-like, and convenient to know what the return
+   value of a function should be (if any).
    Parameters
-   pClient :  network connection to drain data from.
-   nLength :  how much data to skip.
-   bExact :   if TRUE, will consume all of nLength bytes. if
-              FALSE, if there are less than nLength bytes
-              available right now, the drain will end when no
-              further data is available now.                     */
-NETWORK_PROC( LOGICAL, TCPDrainEx )( PCLIENT pClient, size_t nLength, int bExact );
-/* <combine sack::network::tcp::TCPDrainEx@PCLIENT@int@int>
-   \ \                                                      */
-#define TCPDrain(c,l) TCPDrainEx( (c), (l), TRUE )
-/* TCP sockets have what is called a NAGLE algorithm that helps
-   them gather small packets into larger packets. This implies a
-   latency on sent communications, but can provide a boost to
-   overall speed.
-   Parameters
-   pClient :  network client to control the nagle algorithm.
-   bEnable :  (TRUE)disable NAGLE or (FALSE)enable NAGLE
-              (TRUE)nodelay (FALSE)packet gather delay           */
-NETWORK_PROC( void, SetTCPNoDelay )( PCLIENT pClient, int bEnable );
-/* TCP Connections have a keep-alive option, that data will be
-   automatically sent to make sure the connection is still
-   alive.
-   Parameters
-   pClient :  network connection enable or disable the keep alive
-              on.
-   bEnable :  TRUE to enable keep\-alive else disable keep\-alive. */
-NETWORK_PROC( void, SetClientKeepAlive)( PCLIENT pClient, int bEnable );
-/* \    Parameters
-   lpClient :   network client to read from
-   lpBuffer :   buffer to read into
-   nBytes :     size of the buffer to read or maximum amount of
-                the read desired.
-   bIsStream :  if TRUE, any opportunity to return a packet is
-                used to pass data to the user's read callback. If
-                FALSE, will read to the complete size nBytes
-                specified.
-   bWait :      if TRUE, will block in the read until there is
-                data, or the buffer is filled completely
-                depending on the value of bIsStream. If FALSE,
-                \returns immediately, the read completion will be
-					 notified later by callback.
-	user_timeout : user specified timeout to be used if bWait is specified.
-                uses internal configurable timeout if 0.
-   Returns
-   size of the packet read if bWait is TRUE,
-   else TRUE for sent, FALSE if the packet could not be sent.
-   This buffer needs to continue existing until the socket is
-   closed, or the read callback returns.
-   Example
-   Used in a normal read callback...
-   <code lang="c++">
-   void CPROC ReadComplete( PCLIENT pc, POINTER buffer, int size )
-   {
-       if( buffer == NULL )
-           buffer = malloc( 4096 );
-       else
-       {
-          // size will be non 0, process buffer
-       }
-       ReadTCP( pc, buffer, 4096 );
-   }
-   </code>                                                         */
-NETWORK_PROC( size_t, doReadExx2)(PCLIENT lpClient,POINTER lpBuffer,size_t nBytes, LOGICAL bIsStream, LOGICAL bWait, int user_timeout DBG_PASS );
-#define doReadExx(p,b,n,s,w) DoReadExx2( p,b,n,s,w,0 )
-/* \    Parameters
-   lpClient :   network client to read from
-   lpBuffer :   buffer to read into
-   nBytes :     size of the buffer to read or maximum amount of
-                the read desired.
-   bIsStream :  if TRUE, any opportunity to return a packet is
-                used to pass data to the user's read callback. If
-                FALSE, will read to the complete size nBytes
-                specified.
-   bWait :      if TRUE, will block in the read until there is
-                data, or the buffer is filled completely
-                depending on the value of bIsStream. If FALSE,
-                \returns immediately, the read completion will be
-                notified later by callback.
-   Returns
-   size of the packet read if bWait is TRUE,
-   else TRUE for sent, FALSE if the packet could not be sent.
-   This buffer needs to continue existing until the socket is
-   closed, or the read callback returns.
-   Example
-   Used in a normal read callback...
-   <code lang="c++">
-   void CPROC ReadComplete( PCLIENT pc, POINTER buffer, int size )
-   {
-       if( buffer == NULL )
-           buffer = malloc( 4096 );
-       else
-       {
-          // size will be non 0, process buffer
-       }
-       ReadTCP( pc, buffer, 4096 );
-   }
-   </code>                                                         */
-//NETWORK_PROC( size_t, doReadExx )(PCLIENT lpClient, POINTER lpBuffer, size_t nBytes
-//										, LOGICAL bIsStream, LOGICAL bWait );
-/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
-   \    Remarks
-   if bWait is not specifed, it is passed as FALSE.                            */
-//NETWORK_PROC( size_t, doReadEx )(PCLIENT lpClient,POINTER lpBuffer,size_t nBytes, LOGICAL bIsStream DBG_PASS );
-#define doReadEx( p,b,n,s )  doReadExx2( p,b,n,s,FALSE, 0 DBG_SRC)
-/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
-   \ \                                                                         */
-#define ReadStream(pc,pBuf,nSize) doReadExx2( pc, pBuf, nSize, TRUE, FALSE, 0 DBG_SRC )
-/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
-   \ \                                                                         */
-#define doRead(pc,pBuf,nSize)     doReadExx2(pc, pBuf, nSize, FALSE, FALSE, 0 DBG_SRC )
-/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
-   \ \                                                                         */
-#define ReadTCP ReadStream
-/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
-   \ \                                                                         */
-#define ReadTCPMsg doRead
-/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
-   \ \                                                                         */
-#define WaitReadTCP(pc,buf,nSize)    doReadExx2(pc,buf, nSize, TRUE, TRUE, 0 DBG_SRC )
-/* <combine sack::network::tcp::doReadExx@PCLIENT@POINTER@int@LOGICAL@LOGICAL>
-   \ \                                                                         */
-#define WaitReadTCPMsg(pc,buf,nSize) doReadExx2(pc,buf, nSize, FALSE, TRUE, 0  DBG_SRC)
-/* \#The buffer will be sent in the order of the writes to the
-   socket, and released when empty. If the socket is immediatly
-   able to write, the buffer will be sent, and any remai
-   Parameters
-   lpClient :     network connection to write to
-   pInBuffer :    buffer to write
-   nInLen :       Length of the buffer to send
-   bLongBuffer :  if TRUE, then the buffer written is maintained
-                  exactly by the network layer. A WriteComplete
-                  callback will be invoked when the buffer has
-                  been sent so the application might delete the
-                  buffer.
-   failpending :  Uhmm... maybe if it goes to pending, fail?
+   priority :    The preload priority to load at.
+   task :        process level name registry. This would be
+                 "Intershell" or "psi" or some other base prefix.
+                 The prefix can contain a path longer than 1
+                 level.
+   name :        This is the function name to build. (Can be used
+                 for link debugging sometimes)
+   classtype :   class of the name being registered
+   methodname :  name of the routine to register
+   returntype :  the literal type of the return type of this
+                 function (void, int, PStruct* )
+   argtypes :    Argument signature of the routine in parenthesis
+   line :        this is usually filled with __LINE__ so that the
+                 same function name (name) will be different in
+                 different files (even in the same file)
    Remarks
-   If bLongBuffer is not set, then if the write cannot
-   immediately complete, then a new buffer is allocated
-   internally, and unsent data is buffered by the network
-   collection. This allows the user to not worry about slowdowns
-   due to blocking writes. Often writes complete immediately,
-   and are not buffered other than in the user's own buffer
-   passed to this write.                                         */
-NETWORK_PROC( LOGICAL, doTCPWriteExx )( PCLIENT lpClient
-						, CPOINTER pInBuffer
-						, size_t nInLen, int bLongBuffer
-                                   , int failpending
-                                   DBG_PASS
-                                  );
-/* <combine sack::network::tcp::doTCPWriteExx@PCLIENT@CPOINTER@int@int@int failpending>
-   \ \                                                                                  */
-#define doTCPWriteEx( c,b,l,f1,f2) doTCPWriteExx( (c),(b),(l),(f1),(f2) DBG_SRC )
-/* <combine sack::network::tcp::doTCPWriteExx@PCLIENT@CPOINTER@int@int@int failpending>
-   \ \                                                                                  */
-#define SendTCPEx( c,b,l,p) doTCPWriteExx( c,b,l,FALSE,p DBG_SRC)
-/* <combine sack::network::tcp::doTCPWriteExx@PCLIENT@CPOINTER@int@int@int failpending>
-   \ \                                                                                  */
-#define SendTCP(c,b,l) doTCPWriteExx(c,b,l, FALSE, FALSE DBG_SRC)
-/* <combine sack::network::tcp::doTCPWriteExx@PCLIENT@CPOINTER@int@int@int failpending>
-   \ \                                                                                  */
-#define SendTCPLong(c,b,l) doTCPWriteExx(c,b,l, TRUE, FALSE DBG_SRC)
-_TCP_NAMESPACE_END
-NETWORK_PROC( void, SetNetworkLong )(PCLIENT lpClient,int nLong,uintptr_t dwValue);
-NETWORK_PROC( void, SetNetworkInt )(PCLIENT lpClient,int nLong, int value);
-/* Obsolete. See SetNetworkLong. */
-NETWORK_PROC( void, SetNetworkWord )(PCLIENT lpClient,int nLong,uint16_t wValue);
-NETWORK_PROC( uintptr_t, GetNetworkLong )(PCLIENT lpClient,int nLong);
-NETWORK_PROC( int, GetNetworkInt )(PCLIENT lpClient,int nLong);
-NETWORK_PROC( uint16_t, GetNetworkWord )(PCLIENT lpClient,int nLong);
-/* Symbols which may be passed to GetNetworkLong to get internal
-   parts of the client.                                          */
-enum GetNetworkLongAccessInternal{
- GNL_IP      = (-1),
- /* Gets the IP of the remote side of the connection, if
-    applicable. UDP Sockets don't have a bound destination. */
- GNL_PORT    = (-4),
- /* Gets the port at the remote side of the connection that is
-    being sent to.                                             */
- GNL_MYIP    = (-3),
- /* Gets the 4 byte IPv4 address that is what I am using on my
-    side. After a socket has sent, it will have a set source IP
-    under windows.                                              */
- GNL_MYPORT  = (-2),
- /* Gets the 16 bit port of the TCP or UDP connection that you
-    are sending from locally.                                  */
- GNL_MAC_LOW = (-5),
- GNL_MAC_HIGH= (-6),
- GNL_REMOTE_ADDRESS = (-7),
- GNL_LOCAL_ADDRESS = (-8),
-};
-//int get_mac_addr (char *device, unsigned char *buffer)
-NETWORK_PROC( int, GetMacAddress)(PCLIENT pc, uint8_t* buf, size_t *buflen );
-//NETWORK_PROC( int, GetMacAddress)(PCLIENT pc );
-//int get_mac_addr (char *device, unsigned char *buffer)
-NETWORK_PROC( PLIST, GetMacAddresses)( void );
-NETWORK_PROC( void, RemoveClientExx )(PCLIENT lpClient, LOGICAL bBlockNofity, LOGICAL bLinger DBG_PASS );
-/* <combine sack::network::RemoveClientExx@PCLIENT@LOGICAL@LOGICAL bLinger>
-   \ \                                                                      */
-#define RemoveClientEx(c,b,l) RemoveClientExx(c,b,l DBG_SRC)
-/* <combine sack::network::RemoveClientExx@PCLIENT@LOGICAL@LOGICAL bLinger>
-   \ \                                                                      */
-#define RemoveClient(c) RemoveClientEx(c, FALSE, FALSE )
-/* Begin an SSL Connection.  This ends up replacing ReadComplete callback with an inbetween layer*/
-NETWORK_PROC( LOGICAL, ssl_BeginClientSession )( PCLIENT pc, CPOINTER keypair, size_t keylen, CPOINTER keypass, size_t keypasslen, CPOINTER rootCert, size_t rootCertLen );
-NETWORK_PROC( LOGICAL, ssl_BeginServer )( PCLIENT pc, CPOINTER cert, size_t certlen, CPOINTER keypair, size_t keylen, CPOINTER keypass, size_t keypasslen);
-NETWORK_PROC( LOGICAL, ssl_GetPrivateKey )(PCLIENT pc, POINTER *keydata, size_t *keysize);
-NETWORK_PROC( LOGICAL, ssl_IsClientSecure )(PCLIENT pc);
-NETWORK_PROC( void, ssl_SetIgnoreVerification )(PCLIENT pc);
-/* use this to send on SSL Connection instead of SendTCP. */
-NETWORK_PROC( LOGICAL, ssl_Send )( PCLIENT pc, CPOINTER buffer, size_t length );
-/* User Datagram Packet connection methods. This controls
-   opening sockets that are based on UDP.                 */
-_UDP_NAMESPACE
-/* Open a UDP socket. Since the address to send to is implied on
-   each message that is sent, all that is required is to setup
-   where the UDP socket is listening.
+   This registers a routine at the specified preload priority.
+   Registers under [task]/[classname]/methodname. The name of
+   the registered routine from a C perspective is [name][line]. This
+   function is not called directly, but will only be referenced
+   from the registered name.
+   Example
+   See <link sack::app::registry::GetFirstRegisteredNameEx@PCLASSROOT@CTEXTSTR@PCLASSROOT *, GetFirstRegisteredNameEx> */
+/*
+#define _1__DefineRegistryMethodP(priority,task,name,classtype,classbase,methodname,returntype,argtypes,line)	   _2___DefineRegistryMethodP(priority,task,name,classtype,classbase,methodname,returntype,argtypes,line)
+#define _0_DefineRegistryMethodP(priority,task,name,classtype,classbase,methodname,returntype,argtypes,line)	   _1__DefineRegistryMethodP(priority,task,name,classtype,classbase,methodname,returntype,argtypes,line)
+#define DefineRegistryMethodP(priority,task,name,classtype,classbase,methodname,returntype,argtypes)	  _0_DefineRegistryMethodP(priority,task,name,classtype,classbase,methodname,returntype,argtypes,__LINE__)
+*/
+#define DefineRegistrySubMethod_i(task,name,classtype,classbase,methodname,subname,returntype,argtypes,line)	   CPROC paste(name,line)argtypes;	       PRELOAD( paste(paste(Register##name##Button,preproc_symbol(EXTRA_PRELOAD_SYMBOL)),line) ) {	  SimpleRegisterMethod( task "/" classtype "/" classbase "/" methodname, paste(name,line)	  , #returntype, subname, #argtypes ); }	                                                                          static returntype CPROC paste(name,line)
+#define DefineRegistrySubMethod(task,name,classtype,classbase,methodname,subname,returntype,argtypes)	  DefineRegistrySubMethod_i(task,name,classtype,classbase,methodname,subname,returntype,argtypes,__LINE__)
+/* attempts to use dynamic linking functions to resolve passed
+   global name if that fails, then a type is registered for this
+   global, and an instance created, so that that instance may be
+   reloaded again, otherwise the data in the main application is
+   used... actually we should deprecate the dynamic loading
+   part, and just register the type.
+   SimpleRegisterAndCreateGlobal Simply registers the type as a
+   global variable type. Allows creation of the global space
+   later.
    Parameters
-   pAddr :          Pointer to a string address to listen at. Can
-                    be NULL to listen on any interface, (also
-                    specified as "0.0.0.0"), see
-                    CreateSockAddress notes.
-   wPort :          16 bit value for the port to listen at.
-   pReadComplete :  user callback which is invoked when a read
-                    completes on a UDP socket.
-   Close :          close callback which is invoked when the new
-                    network connection is closed.
-   Returns
-   NULL if no clients available, or if address bind on listen
-   side fails.
-   otherwise is a valid network connection to send and receive
-   UDP data on.
-   The read_complete callback, if specified, will be called,
-	with a NULL pointer and 0 size, before the connect complete.   */
-NETWORK_PROC( PCLIENT, CPPServeUDPAddrEx )( SOCKADDR *pAddr
-                  , cReadCompleteEx pReadComplete
-                  , uintptr_t psvRead
-                  , cCloseCallback Close
-													 , uintptr_t psvClose
-													 , int bCPP DBG_PASS );
-NETWORK_PROC( PCLIENT, ServeUDPEx )( CTEXTSTR pAddr, uint16_t wPort,
-                  cReadCompleteEx pReadComplete,
-                  cCloseCallback Close DBG_PASS );
-#define ServeUDP( addr,port,read,close) ServeUDPEx( addr, port, read, close DBG_SRC )
-//NETWORK_PROC( PCLIENT, ServeUDP )( CTEXTSTR pAddr, uint16_t wPort,
-//                  cReadCompleteEx pReadComplete,
-//                  cCloseCallback Close);
-//NETWORK_PROC( PCLIENT, ServeUDP )( CTEXTSTR pAddr, uint16_t wPort,
-//                  cReadCompleteEx pReadComplete,
-//                  cCloseCallback Close);
-/* Creates a client to listen for messages or to send UDP
-   messages.
+   name :         name of the pointer to global type to create.<p />text
+                  string to register this created global as.
+   ppGlobal :     address of the pointer to global memory.
+   global_size :  size of the global area to create
+   Example
+   <code lang="c++">
+   typedef struct {
+      int data;
+   } my_global;
+   my_global *global;
+   PRELOAD( Init )
+   {
+       SimpleRegisterAndCreateGlobal( global );
+   }
+   </code>                                                               */
+PROCREG_PROC( void, RegisterAndCreateGlobal )( POINTER *ppGlobal, uintptr_t global_size, CTEXTSTR name );
+/* <combine sack::app::registry::RegisterAndCreateGlobal@POINTER *@uintptr_t@CTEXTSTR>
+   \ \                                                                                   */
+#define SimpleRegisterAndCreateGlobal( name )	 RegisterAndCreateGlobal( (POINTER*)&name, sizeof( *name ), #name )
+/* Init routine is called, otherwise a 0 filled space is
+   returned. Init routine is passed the pointer to the global
+   and the size of the global block the global data block is
+   zero initialized.
    Parameters
-   pAddr :          address to listen for UDP messages on.
-   pReadComplete :  user callback to received read events.
-   Close :          user callback to be invoked when the network
-                    connection is closed. (network interface
-                    disabled?)
-   Returns
-   NULL if no sockets are available, or the bind fails. (consult
-   log?)
-   \returns a network connection which is listening on the
-   specified address. The read complete will be called. if it is
-	specified, before this function returns.                      */
-NETWORK_PROC( PCLIENT, ServeUDPAddrEx )( SOCKADDR *pAddr,
-                     cReadCompleteEx pReadComplete,
-													 cCloseCallback Close DBG_PASS );
-#define ServeUDPAddr(addr,read,close) ServeUDPAddrEx( addr,read,close DBG_SRC )
-/* \    Parameters
-   address :         Address to listen at (interface
-                     specification). Can be NULL to specify ANY
-                     address, See notes on CreateSockAddress.
-   port :            16 bit port to listen at
-   dest_address :    Address to connect to. Can be NULL to
-                     specify ANY address, See notes on
-                     CreateSockAddress.
-   dest_port :       16 bit port to send to. Ignored if
-                     dest_address is NULL.
-   read_complete :   User event handler which is invoked when
-                     data is read from the socket.
-   close_callback :  user event handler which is invoked when
-                     this socket is closed.
-   Returns
-   NULL if no clients available, or if address bind on listen
-   side fails.
-   otherwise is a valid network connection to send and receive
-   UDP data on.
-   The read_complete callback, if specified, will be called,
-   with a NULL pointer and 0 size, before the connect complete. */
-NETWORK_PROC( PCLIENT, ConnectUDPEx )( CTEXTSTR , uint16_t ,
-                    CTEXTSTR, uint16_t,
-                    cReadCompleteEx,
-												  cCloseCallback DBG_PASS );
-#define ConnectUDP(a,b,c,d,e,f) ConnectUDPEx(a,b,c,d,e,f DBG_SRC )
-/* \    Parameters
-   sa :             address to listen for UDP messages at.
-   saTo :           address to send UDP messages to, if the sa
-                    parameter of send is NULL.
-   pReadComplete :  user callback which will be invoked when
-                    reads complete on the network connection.
-   Close :          user callback which will be invoked when the
-                    listening socket closes.
-   Returns
-   NULL if no sockets are available, or the bind fails. (consult
-   log?)
-   \returns a network connection which is listening on the
-   specified address. The read complete will be called. if it is
-   specified, before this function returns.                      */
-NETWORK_PROC( PCLIENT, ConnectUDPAddrEx )( SOCKADDR *sa,
-                        SOCKADDR *saTo,
-                    cReadCompleteEx pReadComplete,
-													 cCloseCallback Close DBG_PASS );
-#define ConnectUDPAddr(a,b,c,d)  ConnectUDPAddrEx(a,b,c,d DBG_SRC )
-/* Specify a different default address to send UDP messages to.
-   Parameters
-   pc :       network connection to change the default target
-              address of.
-   pToAddr :  text address to connect to. See notes in
-              CreateSockAddress.
-   wPort :    16 bit port address to connect to.
-   Returns
-   TRUE if it was a valid address specification.
-   FALSE if it could not set the address.                       */
-NETWORK_PROC( LOGICAL, ReconnectUDP )( PCLIENT pc, CTEXTSTR pToAddr, uint16_t wPort );
-/* Sets the target default address of a UDP connection.
-   Parameters
-   pc :  network connection to set the target address of.
-   sa :  See CreateSockAddress(), this is a network structure that
-         is a struct sockaddr{} something.                         */
-NETWORK_PROC( LOGICAL, GuaranteeAddr )( PCLIENT pc, SOCKADDR *sa );
-/* A UDP message may be sent to a broadcast address or a subnet
-   broadcast address, in either case, this must be called to
-   enable broadcast communications, else the address must be a
-   direct connection.
-   Parameters
-   pc :       network connection to enable broadcast on.
-   bEnable :  TRUE to enable broadcast ability on this socket. FALSE
-              to disable broadcast ability.                          */
-NETWORK_PROC( void, UDPEnableBroadcast )( PCLIENT pc, int bEnable );
-/* Sends to a UDP Network connection.
-   Parameters
-   pc :     pointer to a network connection to send on.
-   pBuf :   buffer to send
-   nSize :  size of the buffer to send
-   sa :     pointer to a SOCKADDR which this message is destined
-            to. Can be NULL, if GuaranteeAddr, or ConnectUDP is
-            used.
-   Returns
-   The number of bytes in the buffer sent? Probably a TRUE if
-   success else failure?                                         */
-NETWORK_PROC( LOGICAL, SendUDPEx )( PCLIENT pc, CPOINTER pBuf, size_t nSize, SOCKADDR *sa );
-/* <combine sack::network::udp::SendUDPEx@PCLIENT@CPOINTER@int@SOCKADDR *>
-   \ \                                                                     */
-#define SendUDP(pc,pbuf,size) SendUDPEx( pc, pbuf, size, NULL )
-/* Queue a read to a UDP socket. A read cannot complete if it
-   does not have a buffer to read into. A UDP socket will stall
-   if the read callback returns without queuing a read.
-   Parameters
-   pc :        network connection to read from.
-   lpBuffer :  buffer which the next data available on the network
-               connection will be read into.
-   nBytes :    size of the buffer.                                 */
-NETWORK_PROC( int, doUDPRead )( PCLIENT pc, POINTER lpBuffer, int nBytes );
-/* <combine sack::network::udp::doUDPRead@PCLIENT@POINTER@int>
-   \ \                                                         */
-#define ReadUDP doUDPRead
-/* Logs to the log file the content of a socket address.
-   Parameters
-   name :  text leader to print before the address
-   sa :    the socket address to dump.                   */
-NETWORK_PROC( void, DumpAddrEx )( CTEXTSTR name, SOCKADDR *sa DBG_PASS );
-/* <combine sack::network::udp::DumpAddrEx@CTEXTSTR@SOCKADDR *sa>
-   \ \                                                            */
-#define DumpAddr(n,sa) DumpAddrEx(n,sa DBG_SRC )
-NETWORK_PROC( int, SetSocketReuseAddress )( PCLIENT pClient, int32_t enable );
-NETWORK_PROC( int, SetSocketReusePort )( PCLIENT pClient, int32_t enable );
-_UDP_NAMESPACE_END
-USE_UDP_NAMESPACE
-struct interfaceAddress {
-	SOCKADDR *sa;
-	SOCKADDR *saBroadcast;
-	SOCKADDR *saMask;
-};
-NETWORK_PROC( SOCKADDR*, GetBroadcastAddressForInterface )(SOCKADDR *addr);
-NETWORK_PROC( SOCKADDR*, GetInterfaceAddressForBroadcast )(SOCKADDR *addr);
-NETWORK_PROC( struct interfaceAddress*, GetInterfaceForAddress )( SOCKADDR *addr );
-NETWORK_PROC( LOGICAL, IsBroadcastAddressForInterface )( struct interfaceAddress *address, SOCKADDR *addr );
-NETWORK_PROC( void, LoadNetworkAddresses )(void);
-//----- PING.C ------
-NETWORK_PROC( LOGICAL, DoPing )( CTEXTSTR pstrHost,
-             int maxTTL,
-             uint32_t dwTime,
-             int nCount,
-             PVARTEXT pResult,
-             LOGICAL bRDNS,
-             void (*ResultCallback)( uint32_t dwIP, CTEXTSTR name, int min, int max, int avg, int drop, int hops ) );
-NETWORK_PROC( LOGICAL, DoPingEx )( CTEXTSTR pstrHost,
-             int maxTTL,
-             uint32_t dwTime,
-             int nCount,
-             PVARTEXT pResult,
-             LOGICAL bRDNS,
-											 void (*ResultCallback)( uintptr_t psv, uint32_t dwIP, CTEXTSTR name, int min, int max, int avg, int drop, int hops )
-											, uintptr_t psv );
-//----- WHOIS.C -----
-NETWORK_PROC( LOGICAL, DoWhois )( CTEXTSTR pHost, CTEXTSTR pServer, PVARTEXT pvtResult );
+   ppGlobal :     Address of the pointer to the global region
+   global_size :  size of the global region to create
+   name :         name of the global region to register (so
+                  future users get back the same data area)
+   Init :         function to call to initialize the region when
+                  created. (doesn't have to be a global. Could be
+                  used to implement types that have class
+                  constructors \- or not, since there's only one
+                  instance of a global \- this is more for
+                  singletons).
+   Example
+   <code>
+   typedef struct {
+      int data;
+   } my_global;
+   my_global *global;
+   </code>
+   <code lang="c++">
+   void __cdecl InitRegion( POINTER region, uintptr_t region_size )
+   {
+       // do something to initialize 'region'
+   }
+   PRELOAD( InitGlobal )
+   {
+       SimpleRegisterAndCreateGlobalWithInit( global, InitRegion );
+   }
+   </code>                                                          */
+PROCREG_PROC( void, RegisterAndCreateGlobalWithInit )( POINTER *ppGlobal, uintptr_t global_size, CTEXTSTR name, void (CPROC*Init)(POINTER,uintptr_t) );
+/* <combine sack::app::registry::RegisterAndCreateGlobalWithInit@POINTER *@uintptr_t@CTEXTSTR@void __cdecl*InitPOINTER\,uintptr_t>
+   \ \                                                                                                                              */
+#define SimpleRegisterAndCreateGlobalWithInit( name,init )	 RegisterAndCreateGlobalWithInit( (POINTER*)&name, sizeof( *name ), #name, init )
+/* a tree dump will result with dictionary names that may translate automatically. */
+/* This has been exported as a courtesy for StrDup.
+ * this routine MAY result with a translated string.
+ * this routine MAY result with the same pointer.
+ * this routine MAY need to be improved if MANY more strdups are replaced
+ * Add a binary tree search index when large.
+ * Add a transaltion tree index at the same time.
+ */
+PROCREG_PROC( CTEXTSTR, SaveNameConcatN )( CTEXTSTR name1, ... );
+// no space stripping, saves literal text
+PROCREG_PROC( CTEXTSTR, SaveText )( CTEXTSTR text );
+PROCREG_NAMESPACE_END
 #ifdef __cplusplus
-typedef class network *PNETWORK;
-/* <combine sack::network::network>
-   \ \                              */
-typedef class network
+	using namespace sack::app::registry;
+#endif
+#endif
+//#include <controls.h>
+// should consider merging these headers(?)
+#ifndef HTML5_WEBSOCKET_CLIENT_INCLUDED
+#define HTML5_WEBSOCKET_CLIENT_INCLUDED
+/*****************************************************
+so... what does the client provide?
+websocket protocol is itself wrapped in a frame, so messages are described with exact
+length, and what is received will be exactly like the block that was sent.
+*****************************************************/
+/* Generalized HTTP Processing. All POST, GET, RESPONSE packets
+   all fit within this structure.
+                                                                */
+#ifndef HTTP_PROCESSING_INCLUDED
+/* Multiple inclusion protection symbol */
+#define HTTP_PROCESSING_INCLUDED
+#ifdef HTTP_SOURCE
+#define HTTP_EXPORT EXPORT_METHOD
+#else
+/* Defines how external functions are referenced
+   (dllimport/export/extern)                     */
+#define HTTP_EXPORT IMPORT_METHOD
+#endif
+/* The API type of HTTP functions - default to CPROC. */
+#define HTTPAPI CPROC
+#ifdef __cplusplus
+/* A symbol to define the sub-namespace of HTTP_NAMESPACE  */
+#define _HTTP_NAMESPACE namespace http {
+/* A macro to end just the HTTP sub namespace. */
+#define _HTTP_NAMESPACE_END }
+#else
+#define _HTTP_NAMESPACE
+#define _HTTP_NAMESPACE_END
+#endif
+/* HTTP full namespace  */
+#define HTTP_NAMESPACE TEXT_NAMESPACE _HTTP_NAMESPACE
+/* Macro to use to define where http utility namespace ends. */
+#define HTTP_NAMESPACE_END _HTTP_NAMESPACE_END TEXT_NAMESPACE_END
+SACK_CONTAINER_NAMESPACE
+/* Text library functions. PTEXT is kept as a linked list of
+   segments of text. Each text segment has a size and the data,
+   and additional format flags. PTEXT may also be indirect
+   segments (that is this segment points at another list of
+   segments that are the actualy content for this place.
+                                                                */
+_TEXT_NAMESPACE
+	/* Simple HTTP Packet processing state. Its only intelligence is
+	   that there are fields of http header, and that one of those
+	   fields might be content-length; so it can seperate individual
+	   fields name-value pairs and the packet content.               */
+	_HTTP_NAMESPACE
+struct HttpField {
+	PTEXT name;
+	PTEXT value;
+};
+typedef struct HttpState *HTTPState;
+enum ProcessHttpResult{
+	HTTP_STATE_RESULT_NOTHING = 0,
+	HTTP_STATE_RESULT_CONTENT = 200,
+    HTTP_STATE_RESULT_CONTINUE = 100,
+	HTTP_STATE_INTERNAL_SERVER_ERROR=500,
+	HTTP_STATE_RESOURCE_NOT_FOUND=404,
+   HTTP_STATE_BAD_REQUEST=400,
+};
+/* Creates an empty http state, the next operation should be
+   AddHttpData.                                              */
+HTTP_EXPORT HTTPState  HTTPAPI CreateHttpState( PCLIENT *pc );
+/*Get the http state associated with a network client */
+HTTP_EXPORT HTTPState HTTPAPI GetHttpState( PCLIENT pc );
+/* Destroys a http state, releasing all resources associated
+   with it.                                                  */
+HTTP_EXPORT void HTTPAPI DestroyHttpState( HTTPState pHttpState );
+HTTP_EXPORT
+ /* Add another bit of data to the block. After adding data,
+   ProcessHttp should be called to see if the data has completed
+   a packet.
+   Parameters
+   pHttpState :  state to add data to
+   buffer :      pointer to some data bytes
+   size :        length of data bytes
+   Returns: TRUE if content is added... if collecting chunked encoding may return FALSE.
+   */
+LOGICAL HTTPAPI AddHttpData( HTTPState pHttpState, POINTER buffer, size_t size );
+/* \returns TRUE if completed until content-length if
+   content-length is not specified, data is still collected, but
+   the status never results TRUE.
+	Parameters
+	pc : Occasionally the http processor needs to send data on the
+	     socket without application being aware it did.
+   pHttpState :  Http State to process (after having added data to
+                 it)
+   Return Value List
+   TRUE :   A completed HTTP packet has been gathered \- according
+            to 'content\-length' meta tag.
+   FALSE :  Still collecting full packet                           */
+//HTTP_EXPORT int HTTPAPI ProcessHttp( HTTPState pHttpState );
+HTTP_EXPORT int HTTPAPI ProcessHttp( PCLIENT pc, HTTPState pHttpState );
+HTTP_EXPORT
+ /* Gets the specific result code at the header of the packet -
+   http 2.0 OK sort of thing.                                  */
+PTEXT HTTPAPI GetHttpResponce( HTTPState pHttpState );
+/* Get the method of the request in ht e http state.
+*/
+HTTP_EXPORT PTEXT HTTPAPI GetHttpMethod( struct HttpState *pHttpState );
+/*Get the value of a HTTP header field, by name
+   Parameters
+	pHttpState: the state to get the header field from.
+	name: name of the field to get (checked case insensitive)
+*/
+HTTP_EXPORT PTEXT HTTPAPI GetHTTPField( HTTPState pHttpState, CTEXTSTR name );
+/* Gets the specific request code at the header of the packet -
+   http 2.0 OK sort of thing.                                  */
+HTTP_EXPORT PTEXT HTTPAPI GetHttpRequest( HTTPState pHttpState );
+/* \Returns the body of the HTTP packet (the part of data
+   specified by content-length or by termination of the
+   connection(? think I didn't implement that right)      */
+HTTP_EXPORT PTEXT HTTPAPI GetHttpContent( HTTPState pHttpState );
+/* \Returns the resource path/name of the HTTP packet (the part of data
+   specified by content-length or by termination of the
+   connection(? think I didn't implement that right)      */
+HTTP_EXPORT PTEXT HTTPAPI GetHttpResource( HTTPState pHttpState );
+/* Returns a list of fields that were included in a request header.
+   members of the list are of type struct HttpField.
+   see also: ProcessHttpFields and ProcessCGIFields
+*/
+HTTP_EXPORT PLIST HTTPAPI GetHttpHeaderFields( HTTPState pHttpState );
+HTTP_EXPORT int HTTPAPI GetHttpVersion( HTTPState pHttpState );
+HTTP_EXPORT
+ /* Enumerates the various http header fields by passing them
+   each sequentially to the specified callback.
+   Parameters
+   pHttpState :  _nt_
+   _nt_ :        _nt_
+   psv :         _nt_                                        */
+void HTTPAPI ProcessCGIFields( HTTPState pHttpState, void (CPROC*f)( uintptr_t psv, PTEXT name, PTEXT value ), uintptr_t psv );
+HTTP_EXPORT
+ /* Enumerates the various http header fields by passing them
+   each sequentially to the specified callback.
+   Parameters
+   pHttpState :  _nt_
+   _nt_ :        _nt_
+   psv :         _nt_                                        */
+void HTTPAPI ProcessHttpFields( HTTPState pHttpState, void (CPROC*f)( uintptr_t psv, PTEXT name, PTEXT value ), uintptr_t psv );
+HTTP_EXPORT
+ /* Resets a processing state, so it can start collecting the
+   next state. After a ProcessHttp results with true, this
+   should be called after processing the packet content.
+   Parameters
+   pHttpState :  state to reset for next read...             */
+void HTTPAPI EndHttp( HTTPState pHttpState );
+HTTP_EXPORT
+/* reply message - 200/OK with this body, sent as Content-Type that was requested */
+void HTTPAPI SendHttpMessage( HTTPState pHttpState, PCLIENT pc, PTEXT body );
+HTTP_EXPORT
+/* generate response message, specifies the numeric (200), the text (OK), the content type field value, and the body to send */
+void HTTPAPI SendHttpResponse ( HTTPState pHttpState, PCLIENT pc, int numeric, CTEXTSTR text, CTEXTSTR content_type, PTEXT body );
+/* Callback type used when creating an http server.
+ If there is no registered handler match, then this is called.
+ This should return FALSE if there was no content, allowing a 404 status result.
+ Additional ways of dispatching need to be implemented (like handlers for paths, wildcards...)
+ */
+typedef LOGICAL (CPROC *ProcessHttpRequest)( uintptr_t psv
+												 , HTTPState pHttpState );
+HTTP_EXPORT
+/* Intended to create a generic http service, which you can
+   attach URL handlers to. Incomplete
+   Works mostly?  OnGet has been known to get called....
+   */
+struct HttpServer *CreateHttpServerEx( CTEXTSTR interface_address, CTEXTSTR TargetName, CTEXTSTR site, ProcessHttpRequest handle_request, uintptr_t psv );
+HTTP_EXPORT
+/* Intended to create a generic http service, which you can
+   attach URL handlers to. Incomplete
+   Works mostly?  OnGet has been known to get called....
+   */
+struct HttpServer *CreateHttpsServerEx( CTEXTSTR interface_address, CTEXTSTR TargetName, CTEXTSTR site, ProcessHttpRequest handle_request, uintptr_t psv );
+/* results with just the content of the message; no access to other information avaialble */
+HTTP_EXPORT PTEXT HTTPAPI PostHttp( PTEXT site, PTEXT resource, PTEXT content );
+/* results with just the content of the message; no access to other information avaialble */
+HTTP_EXPORT PTEXT HTTPAPI GetHttp( PTEXT site, PTEXT resource, LOGICAL secure );
+/* results with just the content of the message; no access to other information avaialble */
+HTTP_EXPORT PTEXT HTTPAPI GetHttps( PTEXT address, PTEXT url, const char *certChain );
+/* results with the http state of the message response; Allows getting other detailed information about the result */
+HTTP_EXPORT HTTPState  HTTPAPI PostHttpQuery( PTEXT site, PTEXT resource, PTEXT content );
+/* results with the http state of the message response; Allows getting other detailed information about the result */
+HTTP_EXPORT HTTPState  HTTPAPI GetHttpQuery( PTEXT site, PTEXT resource );
+/* results with the http state of the message response; Allows getting other detailed information about the result */
+HTTP_EXPORT HTTPState HTTPAPI GetHttpsQuery( PTEXT site, PTEXT resource, const char *certChain );
+/* return the numeric response code of a http reply. */
+HTTP_EXPORT int HTTPAPI GetHttpResponseCode( HTTPState pHttpState );
+#define CreateHttpServer(interface_address,site,psv) CreateHttpServerEx( interface_address,NULL,site,NULL,psv )
+#define CreateHttpServer2(interface_address,site,default_handler,psv) CreateHttpServerEx( interface_address,NULL,site,default_handler,psv )
+// receives events for either GET if aspecific OnHttpRequest has not been defined for the specific resource
+// Return TRUE if processed, otherwise will attempt to match other Get Handlers
+#define OnHttpGet( site, resource )	 DefineRegistryMethod("SACK/Http/Methods",OnHttpGet,site,resource,"Get",LOGICAL,(uintptr_t,PCLIENT,struct HttpState *,PTEXT),__LINE__)
+// receives events for either GET if aspecific OnHttpRequest has not been defined for the specific resource
+// Return TRUE if processed, otherwise will attempt to match other Get Handlers
+#define OnHttpPost( site, resource )	 DefineRegistryMethod("SACK/Http/Methods",OnHttpPost,site,resource,"Post",LOGICAL,(uintptr_t,PCLIENT,struct HttpState *,PTEXT),__LINE__)
+// define a specific handler for a specific resource name on a host
+#define OnHttpRequest( site, resource )	 DefineRegistryMethod("SACK/Http/Methods",OnHttpRequest,"something",site "/" resource,"Get",void,(uintptr_t,PCLIENT,struct HttpState *,PTEXT),__LINE__)
+//--------------------------------------------------------------
+//  URL.c  (url parsing utility)
+struct url_cgi_data
 {
-	PCLIENT pc;
-	int TCP;
-	static void CPROC WrapTCPReadComplete( uintptr_t psv, POINTER buffer, size_t nSize );
-	static void CPROC WrapUDPReadComplete( uintptr_t psv, POINTER buffer, size_t nSize, SOCKADDR *sa );
-	static void CPROC WrapWriteComplete( uintptr_t psv );
-	static void CPROC WrapClientConnectComplete( uintptr_t psv, int nError );
-	static void CPROC WrapServerConnectComplete( uintptr_t psv, PCLIENT pcNew );
-	static void CPROC WrapCloseCallback( uintptr_t psv );
-   // notify == server (listen)
-	static void CPROC SetNotify( PCLIENT pc, cppNotifyCallback, uintptr_t psv );
-   // connect == client (connect)
-   static void CPROC SetConnect( PCLIENT pc, cppConnectCallback, uintptr_t psv );
-   static void CPROC SetRead( PCLIENT pc, cppReadComplete, uintptr_t psv );
-   static void CPROC SetWrite( PCLIENT pc, cppWriteComplete, uintptr_t psv );
-   static void CPROC SetClose( PCLIENT pc, cppCloseCallback, uintptr_t psv );
-public:
-	network() { NetworkStart(); pc = NULL; TCP = TRUE; };
-	network( PCLIENT pc ) { NetworkStart(); this->pc = pc; TCP = TRUE; };
-	network( network &cp ) { cp.pc = pc; cp.TCP = TCP; };
-	~network() { if( pc ) RemoveClientEx( pc, TRUE, FALSE ); pc = NULL; };
-	inline void MakeUDP( void ) { TCP = FALSE; }
-	virtual void ReadComplete( POINTER buffer, size_t nSize ) {}
-	virtual void ReadComplete( POINTER buffer, size_t nSize, SOCKADDR *sa ) {}
-	virtual void WriteComplete( void ) {}
-	virtual void ConnectComplete( int nError ) {}
-	// received on the server listen object...
-	virtual void ConnectComplete( class network &pNewClient ) {}
-	virtual void CloseCallback( void ) {}
-	inline int Connect( SOCKADDR *sa )
-	{
-		if( !pc )
-		pc = CPPOpenTCPClientAddrExx( sa
-									, WrapTCPReadComplete
-									, (uintptr_t)this
-									, WrapCloseCallback
-									, (uintptr_t)this
-									, WrapWriteComplete
-									, (uintptr_t)this
-									, WrapClientConnectComplete
-									, (uintptr_t)this
-									, 0
-									);
-		return (int)(pc!=NULL);
-	};
-	inline int Connect( CTEXTSTR name, uint16_t port )
-	{
-		if( !pc )
-		pc = CPPOpenTCPClientExx( name, port
-									, WrapTCPReadComplete
-									, (uintptr_t)this
-									, WrapCloseCallback
-									, (uintptr_t)this
-									, WrapWriteComplete
-									, (uintptr_t)this
-									, WrapClientConnectComplete
-									, (uintptr_t)this
-									, 0
-									);
-		return (int)(pc!=NULL);
-	};
-	inline int Listen( SOCKADDR *sa )
-	{
-		if( !pc )
-		{
-			if( ( pc = CPPOpenTCPListenerAddrEx( sa
-				                        , (cppNotifyCallback)WrapServerConnectComplete
-												, (uintptr_t)this
-														)  ) != NULL )
-			{
-				SetRead( pc, (cppReadComplete)WrapTCPReadComplete, (uintptr_t)this );
-				SetWrite( pc, (cppWriteComplete)WrapWriteComplete, (uintptr_t)this );
-				SetClose( pc, network::WrapCloseCallback, (uintptr_t)this );
-			}
-		}
-		return (int)(pc!=NULL);
-	};
-	inline int Listen( uint16_t port )
-	{
-		if( !pc )
-		{
-			if( ( pc = CPPOpenTCPListenerEx( port
-			                      , (cppNotifyCallback)WrapServerConnectComplete
-											 , (uintptr_t)this ) ) )
-			{
-				SetRead( pc, (cppReadComplete)WrapTCPReadComplete, (uintptr_t)this );
-				SetWrite( pc, (cppWriteComplete)WrapWriteComplete, (uintptr_t)this );
-				SetClose( pc, network::WrapCloseCallback, (uintptr_t)this );
-			}
-		}
-		return (int)(pc!=NULL);
-	};
-	inline void Write( POINTER p, int size )
-	{
-		if( pc ) SendTCP( pc, p, size );
-	};
-	inline void WriteLong( POINTER p, int size )
-	{
-		if( pc ) SendTCPLong( pc, p, size );
-	};
-	inline void Read( POINTER p, int size )
-	{
-		if( pc ) ReadTCP( pc, p, size );
-	};
-	inline void ReadBlock( POINTER p, int size )
-	{
-		if( pc ) ReadTCPMsg( pc, p, size );
-	};
-	inline void SetLong( int l, uint32_t value )
-	{
-      if( pc ) SetNetworkLong( pc, l, value );
-	}
-	inline void SetNoDelay( LOGICAL bTrue )
-	{
-      if( pc ) SetTCPNoDelay( pc, bTrue );
-	}
-	inline void SetClientKeepAlive( LOGICAL bTrue )
-	{
-		if( pc ) sack::network::SetClientKeepAlive( pc, bTrue );
-	}
-	inline uintptr_t GetLong( int l )
-	{
-		if( pc )
-			return GetNetworkLong( pc, l );
-	      return 0;
-	}
-}NETWORK;
-#endif
-SACK_NETWORK_NAMESPACE_END
+	CTEXTSTR name;
+	CTEXTSTR value;
+};
+struct url_data
+{
+	CTEXTSTR protocol;
+	CTEXTSTR user;
+	CTEXTSTR password;
+	CTEXTSTR host;
+	int default_port;
+  // encoding RFC3986 http://tools.ietf.org/html/rfc3986  specifies port characters are in the set of digits.
+	int port;
+	//CTEXTSTR port_data;  // during collection, the password may be in the place of 'port'
+	CTEXTSTR resource_path;
+	CTEXTSTR resource_file;
+	CTEXTSTR resource_extension;
+	CTEXTSTR resource_anchor;
+   // list of struct url_cgi_data *
+	PLIST cgi_parameters;
+};
+HTTP_EXPORT struct url_data * HTTPAPI SACK_URLParse( const char *url );
+HTTP_EXPORT char *HTTPAPI SACK_BuildURL( struct url_data *data );
+HTTP_EXPORT void HTTPAPI SACK_ReleaseURL( struct url_data *data );
+	_HTTP_NAMESPACE_END
+TEXT_NAMESPACE_END
 #ifdef __cplusplus
-using namespace sack::network;
-using namespace sack::network::tcp;
-using namespace sack::network::udp;
+using namespace sack::containers::text::http;
 #endif
 #endif
-//------------------------------------------------------------------
-// $Log: network.h,v $
-// Revision 1.36  2005/05/23 19:29:24  jim
-// Added definition to support WaitReadTCP...
-//
-// Revision 1.35  2005/03/15 20:22:32  chrisd
-// Declare NotifyCallback with meaningful parameters
-//
-// Revision 1.34  2005/03/15 20:14:15  panther
-// Define a routine to build a PF_UNIX socket for unix... this can be used with TCP_ routines to open a unix socket instead of an IP socket.
-//
-// Revision 1.33  2004/09/29 00:49:47  d3x0r
-// Added fancy wait for PSI frames which allows non-polling sleeping... Extended Idle() to result in meaningful information.
-//
-// Revision 1.32  2004/08/18 23:52:24  d3x0r
-// Cleanups - also enhanced network init to expand if called with larger params.
-//
-// Revision 1.31  2004/07/28 16:47:18  jim
-// added support for get address parts.
-//
-// Revision 1.31  2004/07/27 18:28:17  d3x0r
-// Added definition for getaddressparts
-//
-// Revision 1.30  2004/01/26 23:47:20  d3x0r
-// Misc edits.  Fixed filemon.  Export net startup, added def to edit frame
-//
-// Revision 1.29  2003/12/03 10:21:34  panther
-// Tinkering with C++ networking
-//
-// Revision 1.28  2003/11/09 03:32:22  panther
-// Added some address functions to set port and override default port
-//
-// Revision 1.27  2003/09/25 08:34:00  panther
-// Restore callback defs to proper place
-//
-// Revision 1.26  2003/09/25 08:29:16  panther
-// ...New test
-//
-// Revision 1.25  2003/09/25 00:22:35  panther
-// Move cpp wrapper functions into network library
-//
-// Revision 1.24  2003/09/25 00:21:49  panther
-// Move cpp wrapper functions into network library
-//
-// Revision 1.23  2003/09/24 15:10:54  panther
-// Much mangling to extend C++ network interface...
-//
-// Revision 1.22  2003/09/24 02:26:02  panther
-// Fix C++ methods, extend and correct.
-//
-// Revision 1.21  2003/07/29 09:27:14  panther
-// Add Keep Alive option, enable use on proxy
-//
-// Revision 1.20  2003/07/24 16:56:41  panther
-// Updates to expliclity define C procedure model for callbacks and assembly modules - incomplete
-//
-// Revision 1.19  2003/06/04 11:38:01  panther
-// Define PACKED
-//
-// Revision 1.18  2003/03/25 08:38:11  panther
-// Add logging
-//
-// Revision 1.17  2002/12/22 00:14:11  panther
-// Cleanup function declarations and project defines.
-//
-// Revision 1.16  2002/11/24 21:37:40  panther
-// Mods - network - fix server->accepted client method inheritance
-// display - fix many things
-// types - merge chagnes from verious places
-// ping - make function result meaningful yes/no
-// controls - fixes to handle lack of image structure
-// display - fixes to handle moved image structure.
-//
-// Revision 1.16  2002/11/21 19:13:11  jim
-// Added CreateAddress, CreateAddress_hton
-//
-// Revision 1.15  2002/07/25 12:59:02  panther
-// Added logging, removed logging....
-// Network: Added NetworkLock/NetworkUnlock
-// Timers: Modified scheduling if the next timer delta was - how do you say -
-// to fire again before now.
-//
-// Revision 1.14  2002/07/23 11:24:26  panther
-// Added new function to TCP networking - option on write to disable
-// queuing of pending data.
-//
-// Revision 1.13  2002/07/17 11:33:26  panther
-// Added new function to tcp network - dotcpwriteex - allows option to NOT pend
-// buffers.
-//
-// Revision 1.12  2002/07/15 08:34:07  panther
-// Include function to set udp broadcast or not.
-//
-//
-// $Log: network.h,v $
-// Revision 1.36  2005/05/23 19:29:24  jim
-// Added definition to support WaitReadTCP...
-//
-// Revision 1.35  2005/03/15 20:22:32  chrisd
-// Declare NotifyCallback with meaningful parameters
-//
-// Revision 1.34  2005/03/15 20:14:15  panther
-// Define a routine to build a PF_UNIX socket for unix... this can be used with TCP_ routines to open a unix socket instead of an IP socket.
-//
-// Revision 1.33  2004/09/29 00:49:47  d3x0r
-// Added fancy wait for PSI frames which allows non-polling sleeping... Extended Idle() to result in meaningful information.
-//
-// Revision 1.32  2004/08/18 23:52:24  d3x0r
-// Cleanups - also enhanced network init to expand if called with larger params.
-//
-// Revision 1.31  2004/07/28 16:47:18  jim
-// added support for get address parts.
-//
-// Revision 1.31  2004/07/27 18:28:17  d3x0r
-// Added definition for getaddressparts
-//
-// Revision 1.30  2004/01/26 23:47:20  d3x0r
-// Misc edits.  Fixed filemon.  Export net startup, added def to edit frame
-//
-// Revision 1.29  2003/12/03 10:21:34  panther
-// Tinkering with C++ networking
-//
-// Revision 1.28  2003/11/09 03:32:22  panther
-// Added some address functions to set port and override default port
-//
-// Revision 1.27  2003/09/25 08:34:00  panther
-// Restore callback defs to proper place
-//
-// Revision 1.26  2003/09/25 08:29:16  panther
-// ...New test
-//
-// Revision 1.25  2003/09/25 00:22:35  panther
-// Move cpp wrapper functions into network library
-//
-// Revision 1.24  2003/09/25 00:21:49  panther
-// Move cpp wrapper functions into network library
-//
-// Revision 1.23  2003/09/24 15:10:54  panther
-// Much mangling to extend C++ network interface...
-//
-// Revision 1.22  2003/09/24 02:26:02  panther
-// Fix C++ methods, extend and correct.
-//
-// Revision 1.21  2003/07/29 09:27:14  panther
-// Add Keep Alive option, enable use on proxy
-//
-// Revision 1.20  2003/07/24 16:56:41  panther
-// Updates to expliclity define C procedure model for callbacks and assembly modules - incomplete
-//
-// Revision 1.19  2003/06/04 11:38:01  panther
-// Define PACKED
-//
-// Revision 1.18  2003/03/25 08:38:11  panther
-// Add logging
-//
-/* and then we could be really evil
-#define send(s,b,x,t,blah)
-#define recv
-#define socket
-#define getsockopt ?
-#define heh yeah these have exact equivalents ....
+#ifdef __cplusplus
+#else
+#endif
+#ifdef SACK_WEBSOCKET_CLIENT_SOURCE
+#define WEBSOCKET_EXPORT EXPORT_METHOD
+#else
+#define WEBSOCKET_EXPORT IMPORT_METHOD
+#endif
+// the result returned from the web_socket_opened event will
+// become the new value used for future uintptr_t parameters to other events.
+typedef uintptr_t (*web_socket_opened)( PCLIENT pc, uintptr_t psv );
+typedef void (*web_socket_closed)( PCLIENT pc, uintptr_t psv, int code, const char *reason );
+typedef void( *web_socket_http_close )(PCLIENT pc, uintptr_t psv);
+typedef void (*web_socket_error)( PCLIENT pc, uintptr_t psv, int error );
+typedef void (*web_socket_event)( PCLIENT pc, uintptr_t psv, LOGICAL binary, CPOINTER buffer, size_t msglen );
+// protocolsAccepted value set can be released in opened callback, or it may be simply assigned as protocols passed...
+typedef LOGICAL ( *web_socket_accept )(PCLIENT pc, uintptr_t psv, const char *protocols, const char *resource, char **protocolsAccepted);
+typedef void (*web_socket_completion)( PCLIENT pc, uintptr_t psv, int binary, int bytesRead );
+ // passed psv used in server create; since it is sort of an open, return a psv for next states(if any)
+typedef uintptr_t ( *web_socket_http_request )(PCLIENT pc, uintptr_t psv);
+// these should be a combination of bit flags
+// options used for WebSocketOpen
+enum WebSocketOptions {
+	WS_DELAY_OPEN = 1,
+};
+//enum WebSockClientOptions {
+//   WebSockClientOption_Protocols
+//};
+// create a websocket connection.
+//  If web_socket_opened is passed as NULL, this function will wait until the negotiation has passed.
+//  since these packets are collected at a lower layer, buffers passed to receive event are allocated for
+//  the application, and the application does not need to setup an  initial read.
+//  if protocols is NULL none are specified, otherwise the list of
+//  available protocols is sent to the server.
+WEBSOCKET_EXPORT PCLIENT WebSocketOpen( CTEXTSTR address
+                                      , enum WebSocketOptions options
+                                      , web_socket_opened
+                                      , web_socket_event
+                                      , web_socket_closed
+                                      , web_socket_error
+                                      , uintptr_t psv
+                                      , const char *protocols );
+// if WS_DELAY_OPEN is used, WebSocketOpen does not do immediate connect.
+// calling this begins the connection sequence.
+WEBSOCKET_EXPORT void WebSocketConnect( PCLIENT );
+// end a websocket connection nicely.
+// code must be 1000, or 3000-4999, and reason must be less than 123 characters (125 bytes with code)
+WEBSOCKET_EXPORT void WebSocketClose( PCLIENT, int code, const char *reason );
+// there is a control bit for whether the content is text or binary or a continuation
+ // UTF8 RFC3629
+WEBSOCKET_EXPORT void WebSocketBeginSendText( PCLIENT, const char *, size_t );
+// literal binary sending; this may happen to be base64 encoded too
+WEBSOCKET_EXPORT void WebSocketBeginSendBinary( PCLIENT, const uint8_t *, size_t );
+// there is a control bit for whether the content is text or binary or a continuation
+ // UTF8 RFC3629
+WEBSOCKET_EXPORT void WebSocketSendText( PCLIENT, const char *, size_t );
+// literal binary sending; this may happen to be base64 encoded too
+WEBSOCKET_EXPORT void WebSocketSendBinary( PCLIENT, const uint8_t *, size_t );
+WEBSOCKET_EXPORT void WebSocketEnableAutoPing( PCLIENT websock, uint32_t delay );
+WEBSOCKET_EXPORT void WebSocketPing( PCLIENT websock, uint32_t timeout );
+WEBSOCKET_EXPORT void SetWebSocketAcceptCallback( PCLIENT pc, web_socket_accept callback );
+WEBSOCKET_EXPORT void SetWebSocketReadCallback( PCLIENT pc, web_socket_event callback );
+WEBSOCKET_EXPORT void SetWebSocketCloseCallback( PCLIENT pc, web_socket_closed callback );
+WEBSOCKET_EXPORT void SetWebSocketErrorCallback( PCLIENT pc, web_socket_error callback );
+WEBSOCKET_EXPORT void SetWebSocketHttpCallback( PCLIENT pc, web_socket_http_request callback );
+WEBSOCKET_EXPORT void SetWebSocketHttpCloseCallback( PCLIENT pc, web_socket_http_close callback );
+// if set in server accept callback, this will return without extension set
+// on client socket (default), does not request permessage-deflate
+#define WEBSOCK_DEFLATE_DISABLE 0
+// if set in server accept callback (or if not set, default); accept client request to deflate per message
+// if set on client socket, sends request for permessage-deflate to server.
+#define WEBSOCK_DEFLATE_ENABLE 1
+// if set in server accept callback; accept client request to deflate per message, but do not deflate outbound messages
+// if set on client socket, sends request for permessage-deflate to server, but does not deflate outbound messages(?)
+#define WEBSOCK_DEFLATE_ALLOW 2
+// set permessage-deflate option for client requests.
+// allow server side to disable this when responding to a client.
+WEBSOCKET_EXPORT void SetWebSocketDeflate( PCLIENT pc, int enable_flags );
+// default is client masks, server does not
+// this can be used to disable masking on client or enable on server
+// (masked output from server to client is not supported by browsers)
+WEBSOCKET_EXPORT void SetWebSocketMasking( PCLIENT pc, int enable );
+// Set callback to get completed fragment size (total packet size collected so far)
+WEBSOCKET_EXPORT void SetWebSocketDataCompletion( PCLIENT pc, web_socket_completion callback );
+#endif
+#ifdef __cplusplus
+#define _HTML5_WEBSOCKET_NAMESPACE namespace Html5WebSocket {
+#define HTML5_WEBSOCKET_NAMESPACE SACK_NAMESPACE _NETWORK_NAMESPACE _HTML5_WEBSOCKET_NAMESPACE
+#define HTML5_WEBSOCKET_NAMESPACE_END } _NETWORK_NAMESPACE_END SACK_NAMESPACE_END
+#define USE_HTML5_WEBSOCKET_NAMESPACE using namespace sack::network::Html5WebSocket;
+#else
+#define _HTML5_WEBSOCKET_NAMESPACE
+#define HTML5_WEBSOCKET_NAMESPACE
+#define HTML5_WEBSOCKET_NAMESPACE_END
+#define USE_HTML5_WEBSOCKET_NAMESPACE
+#endif
+HTML5_WEBSOCKET_NAMESPACE
+#ifdef HTML5_WEBSOCKET_SOURCE
+#define HTML5_WEBSOCKET_PROC(type,name) EXPORT_METHOD type CPROC name
+#else
+#define HTML5_WEBSOCKET_PROC(type,name) IMPORT_METHOD type CPROC name
+#endif
+// need some sort of other methods to work with an HTML5WebSocket...
+// server side.
+HTML5_WEBSOCKET_PROC( PCLIENT, WebSocketCreate_v2 )(CTEXTSTR hosturl
+	, web_socket_opened on_open
+	, web_socket_event on_event
+	, web_socket_closed on_closed
+	, web_socket_error on_error
+	, uintptr_t psv
+	, int webSocketOptions
+);
+#define WEBSOCK_SERVER_OPTION_WAIT 1
+	HTML5_WEBSOCKET_PROC( PCLIENT, WebSocketCreate )( CTEXTSTR server_url
+																	, web_socket_opened on_open
+																	, web_socket_event on_event
+																	, web_socket_closed on_closed
+																	, web_socket_error on_error
+																	, uintptr_t psv
+																	);
+// during open, server may need to switch behavior based on protocols
+// this can be used to return the protocols requested by the client.
+HTML5_WEBSOCKET_PROC( const char *, WebSocketGetProtocols )( PCLIENT pc );
+// after examining protocols, this is a reply to the client which protocol has been accepted.
+HTML5_WEBSOCKET_PROC( PCLIENT, WebSocketSetProtocols )( PCLIENT pc, const char *protocols );
+/* define a callback which uses a HTML5WebSocket collector to build javascipt to render the control.
+ * example:
+ *       static int OnDrawToHTML("Control Name")(CONTROL, HTML5WebSocket ){ }
+ */
+//#define OnDrawToHTML(name)  //	__DefineRegistryMethodP(PRELOAD_PRIORITY,ROOT_REGISTRY,_OnDrawCommon,"control",name "/rtti","draw_to_canvas",int,(CONTROL, HTML5WebSocket ), __LINE__)
+/* a server side utility to get the request headers that came in.
+this is for going through proxy agents mostly where the header might have x-forwarded-for
 */
+HTML5_WEBSOCKET_PROC( PLIST, GetWebSocketHeaders )( PCLIENT pc );
+/* for server side sockets, get the requested resource path from the client request.
+*/
+HTML5_WEBSOCKET_PROC( PTEXT, GetWebSocketResource )( PCLIENT pc );
+HTML5_WEBSOCKET_PROC( HTTPState, GetWebSocketHttpState )( PCLIENT pc );
+HTML5_WEBSOCKET_PROC( void, ResetWebsocketRequestHandler )( PCLIENT pc_client );
+HTML5_WEBSOCKET_PROC( uintptr_t, WebSocketGetServerData )( PCLIENT pc );
+HTML5_WEBSOCKET_NAMESPACE_END
+USE_HTML5_WEBSOCKET_NAMESPACE
+#endif
+#ifndef JSON_EMITTER_HEADER_INCLUDED
+#define JSON_EMITTER_HEADER_INCLUDED
+#ifdef JSON_EMITTER_SOURCE
+#define JSON_EMITTER_PROC(type,name) EXPORT_METHOD type CPROC name
+#else
+#define JSON_EMITTER_PROC(type,name) IMPORT_METHOD type CPROC name
+#endif
+#ifdef __cplusplus
+SACK_NAMESPACE namespace network { namespace json {
+#endif
+enum JSON_ObjectElementTypes
+{
+   JSON_Element_Integer_8,
+   JSON_Element_Integer_16,
+   JSON_Element_Integer_32,
+   JSON_Element_Integer_64,
+   JSON_Element_Unsigned_Integer_8,
+   JSON_Element_Unsigned_Integer_16,
+   JSON_Element_Unsigned_Integer_32,
+   JSON_Element_Unsigned_Integer_64,
+   JSON_Element_String,
+   JSON_Element_CharArray,
+   JSON_Element_Float,
+   JSON_Element_Double,
+  // result will fill a PLIST
+   JSON_Element_Array,
+   JSON_Element_Object,
+   JSON_Element_ObjectPointer,
+   JSON_Element_List,
+  // ptext type
+   JSON_Element_Text,
+   JSON_Element_PTRSZVAL,
+   JSON_Element_PTRSZVAL_BLANK_0,
+	JSON_Element_UserRoutine,
+ // unparsed object remainder.  Includes bounding { } object indicator for re-parsing
+	JSON_Element_Raw_Object,
+   //JSON_Element_StaticText,  // text type; doesn't happen very often.
+};
+struct json_context_object_element;
+struct json_context_object;
+struct json_context;
+#define JSON_NO_OFFSET (size_t)-1
+// Get a context, which can track message formats.
+// Will eventually expose the low level routines so one can use a context
+// and the simple message building utility functions to product json output
+// without defining objects and members....
+JSON_EMITTER_PROC( struct json_context *, json_create_context )( void );
+// Begin the definition of a json formatting object.
+// the root element must be a array or an object
+JSON_EMITTER_PROC( struct json_context_object *, json_create_object )( struct json_context *context
+                                                                     , size_t object_size );
+// Begin the definition of a json formatting object.
+// the root element must be a array or an object
+JSON_EMITTER_PROC( struct json_context_object *, json_create_array )( struct json_context *context
+                                                                    , size_t offset
+                                                                    , enum JSON_ObjectElementTypes type
+                                                                    , size_t count
+                                                                    , size_t count_offset
+                                                                    );
+// add a member element to a json object
+// if the member element is a object type, then a new context_object results, to which members may be added.
+JSON_EMITTER_PROC( struct json_context_object *, json_add_object_member )( struct json_context_object *object
+                                                                         , CTEXTSTR name
+                                                                         , size_t offset
+                                                                         , enum JSON_ObjectElementTypes type
+                                                                         , size_t object_size
+                                                                         );
+// more complex method; add_object_member actually calls this to implement a 0 byte array of the same type.
+//  object_size is used if the type is JSON_Element_ObjectPointer for the parsing to be able to allocate
+// the message part.
+JSON_EMITTER_PROC( struct json_context_object *, json_add_object_member_array )( struct json_context_object *format
+                                                                               , CTEXTSTR name
+                                                                               , size_t offset
+                                                                               , enum JSON_ObjectElementTypes type
+                                                                               , size_t object_size
+                                                                               , size_t count
+                                                                               , size_t count_offset
+                                                                               );
+// more complex method; add_object_member actually calls this to implement a 0 byte array of the same type.
+//  object_size is used if the type is JSON_Element_ObjectPointer for the parsing to be able to allocate
+// the message part.  array is represented as a pointer, which will be dynamically allocated
+JSON_EMITTER_PROC( struct json_context_object *, json_add_object_member_array_pointer )( struct json_context_object *format
+                                                                                       , CTEXTSTR name
+                                                                                       , size_t offset
+                                                                                       , enum JSON_ObjectElementTypes type
+                                                                                       , size_t count_offset
+                                                                                       );
+// adds a reference to a PLIST as an array with the content of the array specified as the type
+JSON_EMITTER_PROC( struct json_context_object *, json_add_object_member_list )( struct json_context_object *object
+                                                                              , CTEXTSTR name
+  // offset of the list
+                                                                              , size_t offset
+ // of of the members of the list
+                                                                              , enum JSON_ObjectElementTypes content_type
+  // object size if required
+                                                                              , size_t object_size
+                                                                              );
+// this allows recursive structures, so the structure may contain a reference to itself.
+// this allows buildling other objects and referencing them instead of building them in-place
+JSON_EMITTER_PROC( struct json_context_object *, json_add_object_member_object )( struct json_context_object *object
+                                                                                , CTEXTSTR name
+                                                                                , size_t offset
+                                                                                , enum JSON_ObjectElementTypes type
+                                                                                , struct json_context_object *child_object
+                                                                                );
+JSON_EMITTER_PROC( struct json_context_object *, json_add_object_member_user_routine )( struct json_context_object *object
+                                                                                      , CTEXTSTR name
+                                                                                      , size_t offset, enum JSON_ObjectElementTypes type
+                                                                                      , size_t object_size
+                                                                                      , void (*user_formatter)(PVARTEXT,CPOINTER) );
+// take a object format and a pointer to data and return a json message string
+JSON_EMITTER_PROC( TEXTSTR, json_build_message )( struct json_context_object *format
+                                                , POINTER msg );
+// take a json string and a format and fill in a structure from the text.
+// tests all formats, to first-match;
+// take a json string and a format and fill in a structure from the text.
+// if object does not fit all members (may have extra, but must have at least all members in message in format to return TRUE)
+// then it returns false; that is if a member is in the 'msg' parameter that is not in
+// the format, then the result is FALSE.
+//  PDATALIST is full of struct json_value_container
+// turns out numbers can be  hex, octal and binary numbers  (0x[A-F,a-f,0-9]*, 0b[0-1]*, 0[0-9]*)
+// slightly faster (17%) than json6_parse_message because of fewer possible checks.
+JSON_EMITTER_PROC( LOGICAL, json_parse_message )(const char * msg
+                                                , size_t msglen
+                                                , PDATALIST *msg_data_out
+                                                );
+// allocates a parsing context and begins parsing data.
+JSON_EMITTER_PROC( struct json_parse_state *, json_begin_parse )( void );
+// return TRUE when a completed value/object is available.
+// after returning TRUE, call json_parse_get_data.  It is possible that there is
+// still unconsumed data that can begin a new object.  Call this with NULL, 0 for data
+// to consume this internal data.  if this returns FALSE, then ther is no further object
+// to retrieve.
+JSON_EMITTER_PROC( int, json_parse_add_data )( struct json_parse_state *context
+                                             , const char * msg
+                                             , size_t msglen
+                                             );
+// these are common functions that work for json or json6 stream parsers
+JSON_EMITTER_PROC( PDATALIST, json_parse_get_data )( struct json_parse_state *context );
+// get actual allocated root for a value... allows holding that.
+JSON_EMITTER_PROC( const char *, json_get_parse_buffer )(struct json_parse_state *pState, const char *buf);
+JSON_EMITTER_PROC( void, json_parse_dispose_state )( struct json_parse_state **context );
+JSON_EMITTER_PROC( void, json_parse_clear_state )(struct json_parse_state *context);
+JSON_EMITTER_PROC( PTEXT, json_parse_get_error )(struct json_parse_state *context);
+// take a json string and a format and fill in a structure from the text.
+// tests all formats, to first-match;
+// take a json string and a format and fill in a structure from the text.
+// if object does not fit all members (may have extra, but must have at least all members in message in format to return TRUE)
+// then it returns false; that is if a member is in the 'msg' parameter that is not in
+// the format, then the result is FALSE.
+//  PDATALIST is full of struct json_value_container
+//   JSON5 support - Infinity/Nan, string continuations, and comments,unquoted field names; hex, octal and binary numbers
+//       unquoted field names must be a valid javascript keyword using unicode ID_Start/ID_Continue states to determine valid characters.
+//       this is arbitrary though; and could be reverted to just accepting any character other than ':'.
+//   JSON(6?) support - undefined keyword value
+//       accept \uXXXX, \xXX, \[0-3]xx octal, \u{xxxxx} encodings in strings
+//       allow underscores in numbers to separate number groups ( works as ZWNBSP )
+JSON_EMITTER_PROC( LOGICAL, json6_parse_message )( const char * msg
+                                                 , size_t msglen
+                                                 , PDATALIST *msg_data_out
+                                                 );
+JSON_EMITTER_PROC( LOGICAL, _json6_parse_message )( char * msg
+                                                  , size_t msglen
+                                                  , PDATALIST *msg_data_out
+                                                  );
+JSON_EMITTER_PROC( struct json_parse_state *, json6_get_message_parser )( void );
+JSON_EMITTER_PROC( struct json_parse_state *, json_get_message_parser )( void );
+// Add some data to parse for json stream (which may consist of multiple values)
+// return 1 when a completed value/object is available.
+// after returning 1, call json_parse_get_data.  It is possible that there is
+// still unconsumed data that can begin a new object.  Call this with NULL, 0 for data
+// to consume this internal data.  if this returns 0, then there is no further object
+// to retrieve.
+// if this returns -1, an error in parsing has occured, and no further parsing can happen.
+JSON_EMITTER_PROC( int, json6_parse_add_data )( struct json_parse_state *context
+                                              , const char * msg
+                                              , size_t msglen
+                                              );
+JSON_EMITTER_PROC( LOGICAL, json_decode_message )( struct json_context *format
+                                                 , PDATALIST parsedMsg
+                                                 , struct json_context_object **result_format
+                                                 , POINTER *msg_data_out
+                                                 );
+enum json_value_types {
+	VALUE_UNDEFINED = -1
+	, VALUE_UNSET = 0
+ //= 1 no data
+	, VALUE_NULL
+ //= 2 no data
+	, VALUE_TRUE
+ //= 3 no data
+	, VALUE_FALSE
+ //= 4 string
+	, VALUE_STRING
+ //= 5 string + result_d | result_n
+	, VALUE_NUMBER
+ //= 6 contains
+	, VALUE_OBJECT
+ //= 7 contains
+	, VALUE_ARRAY
+	// up to here is supported in JSON
+ //= 8 no data
+	, VALUE_NEG_NAN
+ //= 9 no data
+	, VALUE_NAN
+ //= 10 no data
+	, VALUE_NEG_INFINITY
+ //= 11 no data
+	, VALUE_INFINITY
+  // = 12 comes in as a number, string is data.
+	, VALUE_DATE
+ // = 13 no data; used in [,,,] as place holder of empty
+	, VALUE_EMPTY
+  // = 14 string is base64 encoding of bytes.
+	, VALUE_TYPED_ARRAY
+  // = 14 string is base64 encoding of bytes.
+	, VALUE_TYPED_ARRAY_MAX = 14+12
+};
+struct json_value_container {
+  // name of this value (if it's contained in an object)
+	char * name;
+	size_t nameLen;
+ // value from above indiciating the type of this value
+	enum json_value_types value_type;
+   // the string value of this value (strings and number types only)
+	char *string;
+	size_t stringLen;
+  // boolean whether to use result_n or result_d
+	int float_result;
+	union {
+		double result_d;
+		int64_t result_n;
+		//struct json_value_container *nextToken;
+	};
+  // list of struct json_value_container that this contains.
+	PDATALIST contains;
+  // acutal source datalist(?)
+	PDATALIST *_contains;
+};
+// any allocate mesage parts are released.
+JSON_EMITTER_PROC( void, json_dispose_message )( PDATALIST *msg_data );
+// any allocate mesage parts are released.
+JSON_EMITTER_PROC( void, json6_dispose_message )( PDATALIST *msg_data );
+JSON_EMITTER_PROC( void, json_dispose_decoded_message )(struct json_context_object *format
+	, POINTER msg_data);
+// sanitize strings to send in JSON so quotes don't prematurely end strings and output is still valid.
+// require Release the result.
+JSON_EMITTER_PROC( char*, json_escape_string )( const char * string );
+// sanitize strings to send in JSON so quotes don't prematurely end strings and output is still valid.
+// require Release the result.  pass by length so \0 characters can be kept and don't early terminate.  Result with new length also.
+JSON_EMITTER_PROC( char*, json_escape_string_length )( const char *string, size_t length, size_t *outlen );
+// sanitize strings to send in JSON6 so quotes don't prematurely end strings and output is still valid.
+// require Release the result.  Also escapes not just double-quotes ("), but also single and ES6 Format quotes (', `)
+// this does not translate control chararacters like \n, \t, since strings are allowed to be muliline.
+JSON_EMITTER_PROC( char*, json6_escape_string )( const char * string );
+// sanitize strings to send in JSON6 so quotes don't prematurely end strings and output is still valid.
+// require Release the result.  pass by length so \0 characters can be kept and don't early terminate.  Result with new length also.
+// this does not translate control chararacters like \n, \t, since strings are allowed to be muliline.
+JSON_EMITTER_PROC( char*, json6_escape_string_length )( const char *string, size_t len, size_t *outlen );
+#ifdef __cplusplus
+} } SACK_NAMESPACE_END
+using namespace sack::network::json;
+#endif
+#endif
+/***************************************************************
+ * JSOX Parser
+ *
+ * Parses JSOX (github.com/d3x0r/jsox)
+ *
+ * This function is meant for a simple utility to just take a known completed packet,
+ * and get the values from it.  There may be mulitple top level values, although
+ * the JSON standard will only supply a single object or array as the first value.
+ * jsox_parse_message( "utf8 data", sizeof( "utf8 data" )-1, &pdlMessage );
+ *
+ *
+ * Example :
+ // call to parse a message... and iterate through each value.
+ {
+parse_message
+    PDATALIST pdlMessage;
+    LOGICAL gotMessage;
+	 if( jsox_parse_message( "utf8 data", sizeof( "utf8 data" )-1, &pdlMessage ) ) {
+		  int index;
+        struct jsox_value_container *value;
+		  DATALIST_FORALL( pdlMessage, index, struct jsox_value_container *. value ) {
+           // for each value in the result.... the first layer will
+           // always be just one element, either a simple type, or a VALUE_ARRAY or VALUE_OBJECT, which
+           // then for each value->contains (as a datalist like above), process each of those values.
+		  }
+        jsox_dispose_mesage( &pdlMessage );
+    }
+ }
+ *
+ *  This is a streaming setup, where a data block can be added,
+ *  and the stream of objects can be returned from it....
+ *
+ *  Example 2:
+ // allocate a parser to keep track of the parsing state...
+ struct jsox_parse_state *parser = jsox_begin_parse();
+ // at some point later, add some data to it...
+ jsox_parse_add_data( parser, "utf8-data", sizeof( "utf8-data" ) - 1 );
+ // and then get any objects that have been parsed from the stream so far...
+ {
+    PDATALIST pdlMessage;
+	 pdlMessage = jsox_parse_get_data( parser );
+    if( pdlMessage )
+	 {
+        int index;
+        struct jsox_value_container *value;
+        DATALIST_FORALL( pdlMessage, index, struct jsox_value_container *. value ) {
+           // for each value in the result.... the first layer will
+           // always be just one element, either a simple type, or a VALUE_ARRAY or VALUE_OBJECT, which
+           // then for each value->contains (as a datalist like above), process each of those values.
+        }
+        jsox_dispose_mesage( &pdlMessage );
+		  jsox_parse_add_data( parser, NULL, 0 ); // trigger parsing next message.
+	 }
+ }
+ *
+ ***************************************************************/
+#ifndef JSOX_PARSER_HEADER_INCLUDED
+#define JSOX_PARSER_HEADER_INCLUDED
+// include types to get namespace, and, well PDATALIST types
+#ifdef __cplusplus
+SACK_NAMESPACE namespace network {
+	namespace jsox {
+#endif
+#ifdef JSOX_PARSER_SOURCE
+#  define JSOX_PARSER_PROC(type,name) EXPORT_METHOD type name
+#else
+#  define JSOX_PARSER_PROC(type,name) IMPORT_METHOD type name
+#endif
+enum jsox_value_types {
+	JSOX_VALUE_UNDEFINED = -1
+	, JSOX_VALUE_UNSET = 0
+ //= 1 no data
+	, JSOX_VALUE_NULL
+ //= 2 no data
+	, JSOX_VALUE_TRUE
+ //= 3 no data
+	, JSOX_VALUE_FALSE
+ //= 4 string
+	, JSOX_VALUE_STRING
+ //= 5 string + result_d | result_n
+	, JSOX_VALUE_NUMBER
+ //= 6 contains
+	, JSOX_VALUE_OBJECT
+ //= 7 contains
+	, JSOX_VALUE_ARRAY
+	// up to here is supported in JSON
+ //= 8 no data
+	, JSOX_VALUE_NEG_NAN
+ //= 9 no data
+	, JSOX_VALUE_NAN
+ //= 10 no data
+	, JSOX_VALUE_NEG_INFINITY
+ //= 11 no data
+	, JSOX_VALUE_INFINITY
+  // = 12 comes in as a number, string is data.
+	, JSOX_VALUE_DATE
+ // = 13 string data, needs bigint library to process...
+	, JSOX_VALUE_BIGINT
+ // = 14 no data; used in [,,,] as place holder of empty
+	, JSOX_VALUE_EMPTY
+  // = 15 string is base64 encoding of bytes.
+	, JSOX_VALUE_TYPED_ARRAY
+  // = 14 string is base64 encoding of bytes.
+	, JSOX_VALUE_TYPED_ARRAY_MAX = JSOX_VALUE_TYPED_ARRAY +12
+};
+struct jsox_value_container {
+  // name of this value (if it's contained in an object)
+	char * name;
+	size_t nameLen;
+ // value from above indiciating the type of this value
+	enum jsox_value_types value_type;
+   // the string value of this value (strings and number types only)
+	char *string;
+	size_t stringLen;
+  // boolean whether to use result_n or result_d
+	int float_result;
+	union {
+		double result_d;
+		int64_t result_n;
+		//struct json_value_container *nextToken;
+	};
+  // list of struct json_value_container that this contains.
+	PDATALIST contains;
+  // acutal source datalist(?)
+	PDATALIST *_contains;
+  // if VALUE_OBJECT or VALUE_TYPED_ARRAY; this may be non NULL indicating what the class name is.
+	char *className;
+};
+// allocates a JSOX parsing context and is prepared to begin parsing data.
+JSOX_PARSER_PROC( struct jsox_parse_state *, jsox_begin_parse )(void);
+// clear state; after an error state, this can allow reusing a state.
+JSOX_PARSER_PROC( void, jsox_parse_clear_state )( struct jsox_parse_state *state );
+// get actual allocated root for a value... allows holding that.
+JSOX_PARSER_PROC( const char *, jsox_get_parse_buffer )(struct jsox_parse_state *pState, const char *buf);
+// destroy current parse state.
+JSOX_PARSER_PROC( void, jsox_parse_dispose_state )(struct jsox_parse_state **ppState);
+// return >0 when a completed value/object is available.
+// after returning >0, call json_parse_get_data.  It is possible that there is
+// still unconsumed data that can begin a new object.  Call this with NULL, 0 for data
+// to consume this internal data.  if this returns 0, then ther is no further object
+// to retrieve.  If this return -1 there was an error, and use jsox_parse_get_error() to
+// retrieve the error text.
+JSOX_PARSER_PROC( int, jsox_parse_add_data )(struct jsox_parse_state *context
+	, const char * msg
+	, size_t msglen
+	);
+JSOX_PARSER_PROC( PTEXT, jsox_parse_get_error )(struct jsox_parse_state *state);
+JSOX_PARSER_PROC( PDATALIST, jsox_parse_get_data )(struct jsox_parse_state *context);
+// single all-in-one parsing of an input buffer.
+JSOX_PARSER_PROC( LOGICAL, jsox_parse_message )(const char * msg
+	, size_t msglen
+	, PDATALIST *msg_data_out
+	);
+// release all resources of a message from jsox_parse_message or jsox_parse_get_data
+JSOX_PARSER_PROC( void, jsox_dispose_message )(PDATALIST *msg_data);
+JSOX_PARSER_PROC( struct jsox_parse_state *, jsox_get_messge_parser )(void);
+JSOX_PARSER_PROC( char *, jsox_escape_string_length )(const char *string, size_t len, size_t *outlen);
+JSOX_PARSER_PROC( char *, jsox_escape_string )(const char *string);
+/*
+	jsox_get_pared_value()
+	takes a parsed message data list as a parameer, and a path.
+	A message may have been parsed into multiple parts.  This
+	early version will return just the first value in the datalist.
+	If there is an optional `path` specified, then that is used to
+	step through the JSOX parsed structure to get deeper values.
+	Path is specified as a list of fieldnames and array index numbers.
+	optional separator characters may be used between members '.', ' ', '/' and '\'.
+	Separator characters may be repeated or mixed with other seaprators and are all
+	considered a single separation.
+	optional bracket characters around an array index may be used     [0]    is often as good as 0.
+	Some example paths
+		messages[0]from
+		messages.0.from
+		messages [0] from
+		messages [0] lines[0]
+	{ messages : [ // array of messages
+	    { from : "someone", lines: [ "lines","of","message"] }
+	  ]
+	}
+	jsox_get_parsed_value() returns a value from a PDATALIST
+	jsox_get_parsed_object_value() and jsox_get_parsed_array_value() :  returns a value from a value member.
+*/
+JSOX_PARSER_PROC( struct jsox_value_container *, jsox_get_parsed_value )(PDATALIST pdlMessage, const char *path
+	, void( *callback )(uintptr_t psv, struct jsox_value_container *val), uintptr_t psv
+	);
+JSOX_PARSER_PROC( struct jsox_value_container *, jsox_get_parsed_object_value )(struct jsox_value_container *pdlMessage, const char *path
+	, void( *callback )(uintptr_t psv, struct jsox_value_container *val), uintptr_t psv
+	);
+JSOX_PARSER_PROC( struct jsox_value_container *, jsox_get_parsed_array_value )(struct jsox_value_container * pdlMessage, const char *path
+	, void( *callback )(uintptr_t psv, struct jsox_value_container *val), uintptr_t psv
+	);
+#ifdef __cplusplus
+} } SACK_NAMESPACE_END
+using namespace sack::network::jsox;
+#endif
+#endif
+/*
+ *  Creator: Jim Buckeyne
+ *  Header for configscript.lib(bag.lib)
+ *  Provides definitions for handling configuration files
+ *  or any particular file which has machine generated
+ *  characteristics, it can handle translators to decrypt
+ *  encrypt.  Method of operation is to create a configuration
+ *  evaluator, then AddConfiguratMethod()s to it.
+ *  configuration methods are format descriptors for the lines
+ *  and a routine which is called when such a line is matched.
+ *  One might think of it as a trigger library for MUDs ( a
+ *  way to trigger an event based on certain text input,
+ *  variations in the text input may be assigned as variables
+ *  to be used within the event.
+ *
+ *  More about configuration string parsing is available in
+ *  $(SACK_BASE)/src/configlib/config.rules text file.
+ *
+ *  A vague attempt at providing a class to derrive a config-
+ *  uration reader class, which may contain private data
+ *  within such a class, or otherwise provide an object with
+ *  simple namespace usage. ( add(), go() )
+ *
+ *  This library also imlements several PTEXT based methods
+ *  which can evaluate text segments into valid binary types
+ *  such as text to integer, float, color, etc.  Some of the type
+ *  validators applied for the format argument matching of added
+ *  methods are available for external reference.
+ *
+ */
+#ifndef CONFIGURATION_SCRIPT_HANDLER
+#define CONFIGURATION_SCRIPT_HANDLER
+/* Define COLOR type. Basically the image library regards color
+   as 32 bits of data. User applications end up needing to
+   specify colors in the correct method for the platform they
+   are working on. This provides aliases to rearrange colors.
+   For instance the colors on windows and the colors for OpenGL
+   are not exactly the same. If the OpenGL driver is specified
+   as the output device, the entire code would need to be
+   rebuilt for specifying colors correctly for opengl. While
+   otherwise they are both 32 bits, and pieces work, they get
+   very ugly colors output.
+   See Also
+   <link Colors>                                                */
+#ifndef COLOR_STRUCTURE_DEFINED
+/* An exclusion symbol for defining CDATA and color operations. */
+#define COLOR_STRUCTURE_DEFINED
+#ifdef __cplusplus
+SACK_NAMESPACE
+	namespace image {
+#endif
+		// byte index values for colors on the video buffer...
+		enum color_byte_index {
+ I_BLUE  = 0,
+ I_GREEN = 1,
+ I_RED   = 2,
+ I_ALPHA = 3
+		};
+#if defined( __ANDROID__ ) || defined( _OPENGL_DRIVER )
+#  define USE_OPENGL_COMPAT_COLORS
+#endif
+#if ( !defined( IMAGE_LIBRARY_SOURCE_MAIN ) && ( !defined( FORCE_NO_INTERFACE ) || defined( ALLOW_IMAGE_INTERFACE ) ) )      && !defined( FORCE_COLOR_MACROS )
+#define Color( r,g,b ) MakeColor(r,g,b)
+#define AColor( r,g,b,a ) MakeAlphaColor(r,g,b,a)
+#define SetAlpha( rgb, a ) SetAlphaValue( rgb, a )
+#define SetGreen( rgb, g ) SetGreeValue(rgb,g )
+#define AlphaVal(color) GetAlphaValue( color )
+#define RedVal(color)   GetRedValue(color)
+#define GreenVal(color) GetGreenValue(color)
+#define BlueVal(color)  GetBlueValue(color)
+#else
+#if defined( _OPENGL_DRIVER ) || defined( USE_OPENGL_COMPAT_COLORS )
+#  define Color( r,g,b ) (((uint32_t)( ((uint8_t)(r))|((uint16_t)((uint8_t)(g))<<8))|(((uint32_t)((uint8_t)(b))<<16)))|0xFF000000)
+#  define AColor( r,g,b,a ) (((uint32_t)( ((uint8_t)(r))|((uint16_t)((uint8_t)(g))<<8))|(((uint32_t)((uint8_t)(b))<<16)))|((a)<<24))
+#  define SetAlpha( rgb, a ) ( ((rgb)&0x00FFFFFF) | ( (a)<<24 ) )
+#  define SetGreen( rgb, g ) ( ((rgb)&0xFFFF00FF) | ( ((g)&0xFF)<<8 ) )
+#  define SetBlue( rgb, b )  ( ((rgb)&0xFF00FFFF) | ( ((b)&0xFF)<<16 ) )
+#  define SetRed( rgb, r )   ( ((rgb)&0xFFFFFF00) | ( ((r)&0xFF)<<0 ) )
+#  define GLColor( c )  (c)
+#  define AlphaVal(color) ((color&0xFF000000) >> 24)
+#  define RedVal(color)   ((color&0x000000FF) >> 0)
+#  define GreenVal(color) ((color&0x0000FF00) >> 8)
+#  define BlueVal(color)  ((color&0x00FF0000) >> 16)
+#else
+#  ifdef _WIN64
+#    define AND_FF &0xFF
+#  else
+/* This is a macro to cure a 64bit warning in visual studio. */
+#    define AND_FF
+#  endif
+/* A macro to create a solid color from R G B coordinates.
+   Example
+   <code lang="c++">
+   CDATA color1 = Color( 255,0,0 ); // Red only, so this is bright red
+   CDATA color2 = Color( 0,255,0); // green only, this is bright green
+   CDATA color3 = Color( 0,0,255); // blue only, this is birght blue
+   CDATA color4 = Color(93,93,32); // this is probably a goldish grey
+   </code>                                                             */
+#define Color( r,g,b ) (((uint32_t)( ((uint8_t)((b)AND_FF))|((uint16_t)((uint8_t)((g))AND_FF)<<8))|(((uint32_t)((uint8_t)((r))AND_FF)<<16)))|0xFF000000)
+/* Build a color with alpha specified. */
+#define AColor( r,g,b,a ) (((uint32_t)( ((uint8_t)((b)AND_FF))|((uint16_t)((uint8_t)((g))AND_FF)<<8))|(((uint32_t)((uint8_t)((r))AND_FF)<<16)))|(((a)AND_FF)<<24))
+/* Sets the alpha part of a color. (0-255 value, 0 being
+   transparent, and 255 solid(opaque))
+   Example
+   <code lang="c++">
+   CDATA color = BASE_COLOR_RED;
+   CDATA hazy_color = SetAlpha( color, 128 );
+   </code>
+ */
+#define SetAlpha( rgb, a ) ( ((rgb)&0x00FFFFFF) | ( (a)<<24 ) )
+/* Sets the green channel of a color. Expects a value 0-255.  */
+#define SetGreen( rgb, g ) ( ((rgb)&0xFFFF00FF) | ( ((g)&0x0000FF)<<8 ) )
+/* Sets the blue channel of a color. Expects a value 0-255.  */
+#define SetBlue( rgb, b ) ( ((rgb)&0xFFFFFF00) | ( ((b)&0x0000FF)<<0 ) )
+/* Sets the red channel of a color. Expects a value 0-255.  */
+#define SetRed( rgb, r ) ( ((rgb)&0xFF00FFFF) | ( ((r)&0x0000FF)<<16 ) )
+/* Return a CDATA that is meant for output to OpenGL. */
+#define GLColor( c )  (((c)&0xFF00FF00)|(((c)&0xFF0000)>>16)|(((c)&0x0000FF)<<16))
+/* Get the alpha value of a color. This is a 0-255 unsigned
+   byte.                                                    */
+#define AlphaVal(color) (((color) >> 24) & 0xFF)
+/* Get the red value of a color. This is a 0-255 unsigned byte. */
+#define RedVal(color)   (((color) >> 16) & 0xFF)
+/* Get the green value of a color. This is a 0-255 unsigned
+   byte.                                                    */
+#define GreenVal(color) (((color) >> 8) & 0xFF)
+/* Get the blue value of a color. This is a 0-255 unsigned byte. */
+#define BlueVal(color)  (((color)) & 0xFF)
+#endif
+ // IMAGE_LIBRARY_SOURCE
+#endif
+		/* a definition for a single color channel - for function replacements for ___Val macros*/
+		typedef unsigned char COLOR_CHANNEL;
+        /* a 4 byte array of color (not really used, we mostly went with CDATA and PCDATA instead of COLOR and PCOLOR */
+		typedef COLOR_CHANNEL COLOR[4];
+		// color data raw...
+		typedef uint32_t CDATA;
+		/* pointer to an array of 32 bit colors */
+		typedef uint32_t *PCDATA;
+		/* A Pointer to <link COLOR>. Probably an array of color (a
+		 block of pixels for instance)                            */
+		typedef COLOR *PCOLOR;
+//-----------------------------------------------
+// common color definitions....
+//-----------------------------------------------
+// both yellows need to be fixed.
+#define BASE_COLOR_BLACK         Color( 0,0,0 )
+#define BASE_COLOR_BLUE          Color( 0, 0, 128 )
+#define BASE_COLOR_DARKBLUE          Color( 0, 0, 42 )
+/* An opaque Green.
+   See Also
+   <link Colors>    */
+#define BASE_COLOR_GREEN         Color( 0, 128, 0 )
+/* An opaque cyan - kind of a light sky like blue.
+   See Also
+   <link Colors>                                   */
+#define BASE_COLOR_CYAN          Color( 0, 128, 128 )
+/* An opaque red.
+   See Also
+   <link Colors>  */
+#define BASE_COLOR_RED           Color( 192, 32, 32 )
+/* An opaque BROWN. Brown is dark yellow... so this might be
+   more like a gold sort of color instead.
+   See Also
+   <link Colors>                                             */
+#define BASE_COLOR_BROWN         Color( 140, 140, 0 )
+#define BASE_COLOR_LIGHTBROWN         Color( 221, 221, 85 )
+#define BASE_COLOR_MAGENTA       Color( 160, 0, 160 )
+#define BASE_COLOR_LIGHTGREY     Color( 192, 192, 192 )
+/* An opaque darker grey (gray?).
+   See Also
+   <link Colors>                  */
+#define BASE_COLOR_DARKGREY      Color( 128, 128, 128 )
+/* An opaque a bight or light color blue.
+   See Also
+   <link Colors>                          */
+#define BASE_COLOR_LIGHTBLUE     Color( 0, 0, 255 )
+/* An opaque lighter, brighter green color.
+   See Also
+   <link Colors>                            */
+#define BASE_COLOR_LIGHTGREEN    Color( 0, 255, 0 )
+/* An opaque a lighter, more bight cyan color.
+   See Also
+   <link Colors>                               */
+#define BASE_COLOR_LIGHTCYAN     Color( 0, 255, 255 )
+/* An opaque bright red.
+   See Also
+   <link Colors>         */
+#define BASE_COLOR_LIGHTRED      Color( 255, 0, 0 )
+/* An opaque Lighter pink sort of red-blue color.
+   See Also
+   <link Colors>                                  */
+#define BASE_COLOR_LIGHTMAGENTA  Color( 255, 0, 255 )
+/* An opaque bright yellow.
+   See Also
+   <link Colors>            */
+#define BASE_COLOR_YELLOW        Color( 255, 255, 0 )
+/* An opaque White.
+   See Also
+   <link Colors>    */
+#define BASE_COLOR_WHITE         Color( 255, 255, 255 )
+#define BASE_COLOR_ORANGE        Color( 204,96,7 )
+#define BASE_COLOR_NICE_ORANGE   Color( 0xE9, 0x7D, 0x26 )
+#define BASE_COLOR_PURPLE        Color( 0x7A, 0x11, 0x7C )
+#ifdef __cplusplus
+ //	 namespace image {
+}
+SACK_NAMESPACE_END
+using namespace sack::image;
+#endif
+#endif
+// $Log: colordef.h,v $
+// Revision 1.4  2003/04/24 00:03:49  panther
+// Added ColorAverage to image... Fixed a couple macros
+//
+// Revision 1.3  2003/03/25 08:38:11  panther
+// Add logging
+//
+/* Defines a simple FRACTION type. Fractions are useful for
+   scaling one value to another. These operations are handles
+   continously. so iterating a fraction like 13 denominations of
+   100 will be smooth.                                           */
+#ifndef FRACTIONS_DEFINED
+/* Multiple inclusion protection symbol. */
+#define FRACTIONS_DEFINED
+#ifdef __cplusplus
+#  define _FRACTION_NAMESPACE namespace fraction {
+#  define _FRACTION_NAMESPACE_END }
+#  ifndef _MATH_NAMESPACE
+#    define _MATH_NAMESPACE namespace math {
+#  endif
+#  define	 SACK_MATH_FRACTION_NAMESPACE_END } } }
+#else
+#  define _FRACTION_NAMESPACE
+#  define _FRACTION_NAMESPACE_END
+#  ifndef _MATH_NAMESPACE
+#    define _MATH_NAMESPACE
+#  endif
+#  define	 SACK_MATH_FRACTION_NAMESPACE_END
+#endif
+SACK_NAMESPACE
+	/* Namespace of custom math routines.  Contains operators
+	 for Vectors and fractions. */
+	_MATH_NAMESPACE
+	/* Fraction namespace contains a PFRACTION type which is used to
+   store integer fraction values. Provides for ration and
+   proportion scaling. Can also represent fractions that contain
+   a whole part and a fractional part (5 2/3 : five and
+	two-thirds).                                                  */
+	_FRACTION_NAMESPACE
+/* Define the call type of the function. */
+#define FRACTION_API CPROC
+#  ifdef FRACTION_SOURCE
+#    define FRACTION_PROC EXPORT_METHOD
+#  else
+/* Define the library linkage for a these functions. */
+#    define FRACTION_PROC IMPORT_METHOD
+#  endif
+/* The faction type. Stores a fraction as integer
+   numerator/denominator instead of a floating point scalar. */
+/* Pointer to a <link sack::math::fraction::FRACTION, FRACTION>. */
+/* The faction type. Stores a fraction as integer
+   numerator/denominator instead of a floating point scalar. */
+typedef struct fraction_tag {
+	/* Numerator of the fraction. (This is the number on top of a
+	   fraction.)                                                 */
+	int numerator;
+	/* Denominator of the fraction. (This is the number on bottom of
+	   a fraction.) This specifies the denominations.                */
+	int denominator;
+} FRACTION, *PFRACTION;
+#ifdef HAVE_ANONYMOUS_STRUCTURES
+typedef struct coordpair_tag {
+	union {
+		FRACTION x;
+		FRACTION width;
+	};
+	union {
+		FRACTION y;
+		FRACTION height;
+	};
+} COORDPAIR, *PCOORDPAIR;
+#else
+/* A coordinate pair is a 2 dimensional fraction expression. can
+   be regarded as x, y or width,height. Each coordiante is a
+   Fraction type.                                                */
+typedef struct coordpair_tag {
+	       /* The x part of the coordpair. */
+	       FRACTION x;
+	       /* The y part of the coordpair. */
+	       FRACTION y;
+} COORDPAIR, *PCOORDPAIR;
+#endif
+/* \ \
+   Parameters
+   fraction :     the fraction to set
+   numerator :    numerator of the fraction
+   demoninator :  denominator of the fraction */
+#define SetFraction(f,n,d) ((((f).numerator=((int)(n)) ),((f).denominator=((int)(d)))),(f))
+/* Sets the value of a FRACTION. This is passed as the whole
+   number and the fraction.
+   Parameters
+   fraction :  the fraction to set
+   w :         this is the whole number to set
+   n :         numerator of remainder to set
+   d :         denominator of fraction to set.
+   Example
+   Fraction f = 3 1/2;
+   <code lang="c++">
+   FRACTION f;
+   SetFractionV( f, 3, 1, 2 );
+   // the resulting fraction will be 7/2
+   </code>                                                   */
+#define SetFractionV(f,w,n,d) (  (d)?	 ((((f).numerator=((int)((n)*(w))) )	  ,((f).denominator=((int)(d)))),(f))	  :	 ((((f).numerator=((int)((w))) )	  ,((f).denominator=((int)(1)))),(f))  )
+/* \ \
+   Parameters
+   base :    origin point (content is modified by adding offset
+             to it)
+   offset :  offset point                                       */
+FRACTION_PROC  void FRACTION_API  AddCoords ( PCOORDPAIR base, PCOORDPAIR offset );
+/* Add one fraction to another.
+   Parameters
+   base :    This is the starting value, and recevies the result
+             of (base+offset)
+   offset :  This is the fraction to add to base.
+   Returns
+   base                                                          */
+FRACTION_PROC  PFRACTION FRACTION_API  AddFractions ( PFRACTION base, PFRACTION offset );
+/* Add one fraction to another.
+   Parameters
+   base :    This is the starting value, and recevies the result
+             of (base+offset)
+   offset :  This is the fraction to add to base.
+   Returns
+   base                                                          */
+FRACTION_PROC  PFRACTION FRACTION_API  SubtractFractions ( PFRACTION base, PFRACTION offset );
+/* NOT IMPLEMENTED */
+FRACTION_PROC  PFRACTION FRACTION_API  MulFractions ( PFRACTION f, PFRACTION x );
+/* Log a fraction into a string. */
+FRACTION_PROC  int FRACTION_API  sLogFraction ( TEXTCHAR *string, PFRACTION x );
+/* Unsafe log of a coordinate pair's value into a string. The
+   string should be at least 69 characters long.
+   Parameters
+   string :  the string to print the fraction into
+   pcp :     the coordinate pair to print                     */
+FRACTION_PROC  int FRACTION_API  sLogCoords ( TEXTCHAR *string, PCOORDPAIR pcp );
+/* Log coordpair to logfile. */
+FRACTION_PROC  void FRACTION_API  LogCoords ( PCOORDPAIR pcp );
+/* scales a fraction by a signed integer value.
+   Parameters
+   result\ :  pointer to a FRACTION to receive the result
+   value :    the amount to be scaled
+   f :        the fraction to multiply the value by
+   Returns
+   \result; the pointer the fraction to receive the result. */
+FRACTION_PROC  PFRACTION FRACTION_API  ScaleFraction ( PFRACTION result, int32_t value, PFRACTION f );
+/* Results in the integer part of the fraction. If the faction
+   was 330/10 then the result would be 33.                     */
+FRACTION_PROC  int32_t FRACTION_API  ReduceFraction ( PFRACTION f );
+/* Scales a 32 bit integer value by a fraction. The result is
+   the scaled value result.
+   Parameters
+   f :      pointer to the faction to multiply value by
+   value :  the value to scale
+   Returns
+   The (value * f) integer value of.                          */
+FRACTION_PROC  uint32_t FRACTION_API  ScaleValue ( PFRACTION f, int32_t value );
+/* \ \
+   Parameters
+   f :      The fraction to scale the value by
+   value :  the value to scale by (1/f)
+   Returns
+   the value of ( value * 1/ f )               */
+FRACTION_PROC  uint32_t FRACTION_API  InverseScaleValue ( PFRACTION f, int32_t value );
+	SACK_MATH_FRACTION_NAMESPACE_END
+#ifdef __cplusplus
+using namespace sack::math::fraction;
+#endif
+#endif
+//---------------------------------------------------------------------------
+// $Log: fractions.h,v $
+// Revision 1.6  2004/09/03 14:43:40  d3x0r
+// flexible frame reactions to font changes...
+//
+// Revision 1.5  2003/03/25 08:38:11  panther
+// Add logging
+//
+// Revision 1.4  2003/01/27 09:45:03  panther
+// Fix lack of anonymous structures
+//
+// Revision 1.3  2002/10/09 13:16:02  panther
+// Support for linux shared memory mapping.
+// Support for better linux compilation of configuration scripts...
+// Timers library is now Threads AND Timers.
+//
+//
+#ifdef CONFIGURATION_LIBRARY_SOURCE
+#define CONFIGSCR_PROC(type,name) EXPORT_METHOD type CPROC name
+#else
+#define CONFIGSCR_PROC(type,name) IMPORT_METHOD type CPROC name
+#endif
+#ifdef __cplusplus
+SACK_NAMESPACE namespace config {
+#endif
+typedef char *__arg_list[1];
+typedef __arg_list arg_list;
+// declare 'va_list args = NULL;' to use successfully...
+// the resulting thing is of type va_list.
+typedef struct va_args_tag va_args;
+enum configArgType {
+	CONFIG_ARG_STRING,
+	CONFIG_ARG_INT64,
+	CONFIG_ARG_FLOAT,
+	CONFIG_ARG_DATA,
+	CONFIG_ARG_DATA_SIZE,
+	CONFIG_ARG_LOGICAL,
+	CONFIG_ARG_FRACTION,
+	CONFIG_ARG_COLOR,
+};
+struct va_args_tag {
+	int argsize; arg_list *args; arg_list *tmp_args; int argCount;
+};
+//#define va_args struct { int argsize; arg_list *args; arg_list *tmp_args; }
+#define init_args(name) name.argCount = 0; name.argsize = 0; name.args = NULL;
+  // 32 bits.
+#define ARG_STACK_SIZE 4
+#define PushArgument( argset, argType, type, arg )	                                 ((argset.args = (arg_list*)Preallocate( argset.args		                        , argset.argsize += ((sizeof( enum configArgType )				                 + sizeof( type )				                                   + (ARG_STACK_SIZE-1) )&-ARG_STACK_SIZE) ) )	        ?(argset.argCount++)	                                                        ,((*(enum configArgType*)(argset.args))=(argType))	                         ,(*(type*)(((uintptr_t)argset.args)+sizeof(enum configArgType)) = (arg))	   ,0	                                                                        :0)
+#define PopArguments( argset ) { Release( argset.args ); argset.args=NULL; }
+#define pass_args(argset) (( (argset).tmp_args = (argset).args )	                        ,(*(arg_list*)(&argset.tmp_args)))
+/*
+ * Config methods are passed an arg_list
+ * parameters from arg_list are retrieved using
+ * PARAM( arg_list_param_name, arg_type, arg_name );
+ * ex.
+ *
+ *   PARAM( args, char *, name );
+ *    // results in a variable called name
+ *    // initialized from the first argument in arg_list args;
+ */
+#define my_va_arg(ap,type)     ((ap)[0]+=        ((sizeof(enum configArgType)+sizeof(type)+ARG_STACK_SIZE-1)&~(ARG_STACK_SIZE-1)),        (*(type *)((ap)[0]-((sizeof(type)+ARG_STACK_SIZE-1)&~(ARG_STACK_SIZE-1)))))
+#define my_va_arg_type(ap,type)     (         (*(type *)((ap)[0]-(sizeof(enum configArgType)+(sizeof(type)+ARG_STACK_SIZE-1)&~(ARG_STACK_SIZE-1)))))
+//#define my_va_next_arg_type(ap,type)     (*(type *)((ap)[0]))
+#define my_va_next_arg_type(ap)     ( ( *(enum configArgType *)((ap)[0]) ) )
+#define PARAM_COUNT( args ) (((int*)(args+1))[0])
+#define PARAM( args, type, name ) type name = my_va_arg( args, type )
+#define PARAMEX( args, type, name, argTypeName ) type name = my_va_arg( args, type ); enum configArgType argTypeName = my_va_arg_type(args)
+#define FP_PARAM( args, type, name, fa ) type (CPROC*name)fa = (type (CPROC*)fa)(my_va_arg( args, void *))
+typedef struct config_file_tag* PCONFIG_HANDLER;
+CONFIGSCR_PROC( PCONFIG_HANDLER, CreateConfigurationEvaluator )( void );
+#define CreateConfigurationHandler CreateConfigurationEvaluator
+CONFIGSCR_PROC( void, DestroyConfigurationEvaluator )( PCONFIG_HANDLER pch );
+#define DestroyConfigurationHandler DestroyConfigurationEvaluator
+// this pushes all prior state information about configuration file
+// processing, and allows a new set of rules to be made...
+CONFIGSCR_PROC( void, BeginConfiguration )( PCONFIG_HANDLER pch );
+// begins a sub configuration, and marks to save it for future use
+// so we don't have to always recreate the configuration states...
+CONFIGSCR_PROC( LOGICAL, BeginNamedConfiguration )( PCONFIG_HANDLER pch, CTEXTSTR name );
+// then, when you're done with the new set of rules (end of config section)
+// use this to restore the prior configuration state.
+CONFIGSCR_PROC( void, EndConfiguration )( PCONFIG_HANDLER pch );
+typedef uintptr_t (CPROC*USER_CONFIG_HANDLER)( uintptr_t, arg_list args );
+typedef uintptr_t( CPROC*USER_CONFIG_HANDLER_EX )(uintptr_t, uintptr_t, arg_list args);
+CONFIGSCR_PROC( void, AddConfigurationEx )( PCONFIG_HANDLER pch
+														, CTEXTSTR format
+														, USER_CONFIG_HANDLER Process DBG_PASS );
+CONFIGSCR_PROC( void, AddConfigurationExx )(PCONFIG_HANDLER pch
+	, CTEXTSTR format
+	, USER_CONFIG_HANDLER_EX Process, uintptr_t processHandler DBG_PASS);
+//CONFIGSCR_PROC( void, AddConfiguration )( PCONFIG_HANDLER pch
+//					, char *format
+//													 , USER_CONFIG_HANDLER Process );
+// make a nice wrapper - otherwise we get billions of complaints.
+//#define AddConfiguration(pch,format,process) AddConfiguration( (pch), (format), process )
+#define AddConfiguration(pch,f,pr) AddConfigurationEx(pch,f,pr DBG_SRC )
+#define AddConfigurationMethod AddConfiguration
+// FILTER receives a uintptr_t that was given at configuration (addition to handler)
+// it receives a PTEXT block of (binary) data... and must result with
+// PTEXT segments which are lines which may or may not have \r\n\\ all
+// of which are removed before being resulted to the application.
+//   POINTER* is a pointer to a pointer, this pointer may be used
+//      for private state data.  The last line of the configuration will
+//      call the filter chain with NULL to flush data...
+typedef PTEXT (CPROC*USER_FILTER)( POINTER *, PTEXT );
+CONFIGSCR_PROC( void, AddConfigurationFilter )( PCONFIG_HANDLER pch, USER_FILTER filter );
+CONFIGSCR_PROC( void, ClearDefaultFilters )( PCONFIG_HANDLER pch );
+CONFIGSCR_PROC( void, SetConfigurationEndProc )( PCONFIG_HANDLER pch, uintptr_t (CPROC *Process)( uintptr_t ) );
+CONFIGSCR_PROC( void, SetConfigurationUnhandled )( PCONFIG_HANDLER pch
+																, uintptr_t (CPROC *Process)( uintptr_t, CTEXTSTR ) );
+CONFIGSCR_PROC( int, ProcessConfigurationFile )( PCONFIG_HANDLER pch
+															  , CTEXTSTR name
+															  , uintptr_t psv
+															  );
+CONFIGSCR_PROC( uintptr_t, ProcessConfigurationInput )( PCONFIG_HANDLER pch, CTEXTSTR block, size_t size, uintptr_t psv );
+/*
+ * TO BE IMPLEMENTED
+ *
+CONFIGSCR_PROC( int, vcsprintf )( PCONFIG_HANDLER pch, CTEXTSTR format, va_list args );
+CONFIGSCR_PROC( int, csprintf )( PCONFIG_HANDLER pch, CTEXTSTR format, ... );
+*/
+CONFIGSCR_PROC( int, GetBooleanVar )( PTEXT *start, LOGICAL *data );
+CONFIGSCR_PROC( int, GetColorVar )( PTEXT *start, CDATA *data );
+//CONFIGSCR_PROC( int, IsBooleanVar )( PCONFIG_ELEMENT pce, PTEXT *start );
+//CONFIGSCR_PROC( int, IsColorVar )( PCONFIG_ELEMENT pce, PTEXT *start );
+// takes a binary block of data and creates a base64-like string which may be stored.
+CONFIGSCR_PROC( void, EncodeBinaryConfig )( TEXTSTR *encode, POINTER data, size_t length );
+// this isn't REALLY the same function that's used, but serves the same purpose...
+CONFIGSCR_PROC( int, DecodeBinaryConfig )( CTEXTSTR String, POINTER *binary_buffer, size_t *buflen );
+CONFIGSCR_PROC( CTEXTSTR, FormatColor )( CDATA color );
+CONFIGSCR_PROC( void, StripConfigString )( TEXTSTR out, CTEXTSTR in );
+CONFIGSCR_PROC( void, ExpandConfigString )( TEXTSTR out, CTEXTSTR in );
+#ifdef __cplusplus
+//typedef uintptr_t CPROC ::(*USER_CONFIG_METHOD)( ... );
+typedef class config_reader {
+   PCONFIG_HANDLER pch;
+public:
+	config_reader() {
+      pch = CreateConfigurationEvaluator();
+	}
+	~config_reader() {
+		if( pch ) DestroyConfigurationEvaluator( pch );
+      pch = (PCONFIG_HANDLER)NULL;
+	}
+	inline void add( CTEXTSTR format, USER_CONFIG_HANDLER Process )
+	{
+      AddConfiguration( pch, format, Process );
+	}
+   /*
+	inline void add( char *format, USER_CONFIG_METHOD Process )
+	{
+		union {
+			struct {
+				uint32_t junk;
+            USER_CONFIG_HANDLER Process
+			} c;
+         USER_CONFIG_METHOD Process;
+		} x;
+      x.Process = Process;
+      AddConfiguration( pch, format, x.c.Process );
+		}
+      */
+	inline int go( CTEXTSTR file, POINTER p )
+	{
+		return ProcessConfigurationFile( pch, file, (uintptr_t)p );
+	}
+} CONFIG_READER;
+#endif
+#ifdef __cplusplus
+ //namespace sack { namespace config {
+}
+SACK_NAMESPACE_END
+using namespace sack::config;
+#endif
+#endif
+// $Log: configscript.h,v $
+// Revision 1.17  2004/12/05 15:32:06  panther
+// Some minor cleanups fixed a couple memory leaks
+//
+// Revision 1.16  2004/08/13 16:48:19  d3x0r
+// added ability to put filters on config script data read.
+//
+// Revision 1.15  2004/02/18 20:46:37  d3x0r
+// Add some aliases for badly named routines
+//
+// Revision 1.14  2004/02/08 23:33:15  d3x0r
+// Add a iList class for c++, public access to building parameter va_lists
+//
+// Revision 1.13  2003/12/09 16:15:56  panther
+// Define unhnalded callback set
+//
+// Revision 1.12  2003/11/09 22:31:58  panther
+// Fix CPROC indication on endconfig method
+//
+// Revision 1.11  2003/10/13 04:25:14  panther
+// Fix configscript library... make sure types are consistant (watcom)
+//
+// Revision 1.10  2003/10/12 02:47:05  panther
+// Cleaned up most var-arg stack abuse ARM seems to work.
+//
+// Revision 1.9  2003/09/24 02:53:58  panther
+// Define c++ wrapper for config script library
+//
+// Revision 1.8  2003/07/24 22:49:01  panther
+// Modify addconfig method macro to auto typecast - dangerous by simpler
+//
+// Revision 1.7  2003/07/24 16:56:41  panther
+// Updates to expliclity define C procedure model for callbacks and assembly modules - incomplete
+//
+// Revision 1.6  2003/04/17 09:32:51  panther
+// Added true/false result from processconfigfile.  Added default load from /etc to msgsvr and display
+//
+// Revision 1.5  2003/03/25 08:38:11  panther
+// Add logging
+//
 /*
  *  Created By Jim Buckeyne
  *
@@ -8734,9 +10918,9 @@ struct file_system_interface {
                                                  //file *
 	int (CPROC *_close)(void *);
                     //file *, buffer, length (to read)
-	size_t (CPROC *_read)(void *,char *, size_t);
+	size_t (CPROC *_read)(void *,void *, size_t);
                     //file *, buffer, length (to write)
-	size_t (CPROC *_write)(void*,const char *, size_t);
+	size_t (CPROC *_write)(void*,const void *, size_t);
 	size_t (CPROC *seek)( void *, size_t, int whence);
 	void  (CPROC *truncate)( void *);
 	int (CPROC *_unlink)( uintptr_t psvInstance, const char *);
@@ -8756,6 +10940,10 @@ struct file_system_interface {
 	LOGICAL (CPROC *find_is_directory)( struct find_cursor *cursor );
 	LOGICAL (CPROC *is_directory)( uintptr_t psvInstance, const char *cursor );
 	LOGICAL (CPROC *rename )( uintptr_t psvInstance, const char *original_name, const char *new_name );
+	uintptr_t (CPROC *ioctl)( uintptr_t psvInstance, uintptr_t opCode, va_list args );
+	uintptr_t (CPROC *fs_ioctl)(uintptr_t psvInstance, uintptr_t opCode, va_list args);
+	uint64_t( CPROC *find_get_ctime )(struct find_cursor *cursor);
+	uint64_t( CPROC *find_get_wtime )(struct find_cursor *cursor);
 };
 /* \ \
    Parameters
@@ -8789,20 +10977,22 @@ FILESYS_PROC  int FILESYS_API  CompareMask ( CTEXTSTR mask, CTEXTSTR name, int k
 FILESYS_PROC  int FILESYS_API  ScanFilesEx ( CTEXTSTR base
            , CTEXTSTR mask
            , void **pInfo
-           , void CPROC Process( uintptr_t psvUser, CTEXTSTR name, int flags )
-           , int flags
+           , void CPROC Process( uintptr_t psvUser, CTEXTSTR name, enum ScanFileProcessFlags flags )
+           , enum ScanFileFlags flags
 		   , uintptr_t psvUser, LOGICAL begin_sub_path, struct file_system_mounted_interface *mount );
 FILESYS_PROC  int FILESYS_API  ScanFiles ( CTEXTSTR base
            , CTEXTSTR mask
            , void **pInfo
-           , void CPROC Process( uintptr_t psvUser, CTEXTSTR name, int flags )
-           , int flags
+           , void CPROC Process( uintptr_t psvUser, CTEXTSTR name, enum ScanFileProcessFlags flags )
+           , enum ScanFileFlags flags
            , uintptr_t psvUser );
 FILESYS_PROC  void FILESYS_API  ScanDrives ( void (CPROC *Process)(uintptr_t user, CTEXTSTR letter, int flags)
 										  , uintptr_t user );
+// pass the pointer (pInfo) from aobve; get find_cursor.
+FILESYS_PROC struct find_cursor * FILESYS_API GetScanFileCursor( void *pInfo );
 // result is length of name filled into pResult if pResult == NULL && nResult = 0
 // the result will the be length of the name matching the file.
-FILESYS_PROC  int FILESYS_API  GetMatchingFileName ( CTEXTSTR filemask, int flags, TEXTSTR pResult, int nResult );
+FILESYS_PROC  int FILESYS_API  GetMatchingFileName ( CTEXTSTR filemask, enum ScanFileFlags flags, TEXTSTR pResult, int nResult );
 // searches a path for the last '/' or '\'
 FILESYS_PROC  CTEXTSTR FILESYS_API  pathrchr ( CTEXTSTR path );
 #ifdef __cplusplus
@@ -8813,7 +11003,7 @@ FILESYS_PROC  CTEXTSTR FILESYS_API  pathchr ( CTEXTSTR path );
 // returns pointer passed (if it worked?)
 FILESYS_PROC  TEXTSTR FILESYS_API  GetCurrentPath ( TEXTSTR path, int buffer_len );
 FILESYS_PROC  int FILESYS_API  SetCurrentPath ( CTEXTSTR path );
-/* Creates a directory. If parent peices of the directory do not
+/* Creates a directory. If parent pieces of the directory do not
    exist, those parts are created also.
    Example
    <code lang="c#">
@@ -8948,7 +11138,11 @@ FILESYS_PROC  int FILESYS_API  sack_iwrite ( INDEX file_handle, CPOINTER buffer,
   ScanFiles(), fopen( ..., "r" ), ... exists(), */
 FILESYS_PROC struct file_system_mounted_interface * FILESYS_API sack_mount_filesystem( const char *name, struct file_system_interface *, int priority, uintptr_t psvInstance, LOGICAL writable );
 FILESYS_PROC void FILESYS_API sack_unmount_filesystem( struct file_system_mounted_interface *mount );
+// get a mounted filesystem by name
 FILESYS_PROC struct file_system_mounted_interface * FILESYS_API sack_get_mounted_filesystem( const char *name );
+// returrn inteface used on the mounted filesystem.
+FILESYS_PROC struct file_system_interface * FILESYS_API sack_get_mounted_filesystem_interface( struct file_system_mounted_interface * );
+FILESYS_PROC uintptr_t FILESYS_API sack_get_mounted_filesystem_instance( struct file_system_mounted_interface *mount );
 /* sometimes you want scanfiles to only scan external files...
   so this is how to get that mount */
 FILESYS_PROC struct file_system_mounted_interface * FILESYS_API sack_get_default_mount( void );
@@ -8991,6 +11185,8 @@ FILESYS_PROC  int FILESYS_API  sack_renameEx ( CTEXTSTR file_source, CTEXTSTR ne
 FILESYS_PROC  int FILESYS_API  sack_rename ( CTEXTSTR file_source, CTEXTSTR new_name );
 FILESYS_PROC  void FILESYS_API sack_set_common_data_application( CTEXTSTR name );
 FILESYS_PROC  void FILESYS_API sack_set_common_data_producer( CTEXTSTR name );
+FILESYS_PROC  uintptr_t FILESYS_API  sack_ioctl( FILE *file, uintptr_t opCode, ... );
+FILESYS_PROC  uintptr_t FILESYS_API  sack_fs_ioctl( struct file_system_mounted_interface *mount, uintptr_t opCode, ... );
 #ifndef NO_FILEOP_ALIAS
 #  ifndef NO_OPEN_MACRO
 # define open(a,...) sack_iopen(0,a,##__VA_ARGS__)
@@ -9021,13 +11217,2106 @@ FILESYS_PROC  void FILESYS_API sack_set_common_data_producer( CTEXTSTR name );
  //NO_FILEOP_ALIAS
 #endif
 #ifdef __LINUX__
-#define SYSPATHCHAR WIDE("/")
+#define SYSPATHCHAR "/"
 #else
-#define SYSPATHCHAR WIDE("\\")
+#define SYSPATHCHAR "\\"
 #endif
 FILESYS_NAMESPACE_END
 #ifdef __cplusplus
 using namespace sack::filesys;
+#endif
+#endif
+#ifndef FILE_MONITOR_LIBRARY_DEFINED
+#define FILE_MONITOR_LIBRARY_DEFINED
+#ifdef FILEMONITOR_SOURCE
+#define FILEMONITOR_PROC(type,name) EXPORT_METHOD type CPROC name
+#else
+#define FILEMONITOR_PROC(type,name) IMPORT_METHOD type CPROC name
+#endif
+// filemon will require system features, so pull stdhdrs instead of
+// just sack_tyeps
+  // for namespace nesting/definition
+FILEMON_NAMESPACE
+typedef struct monitor_tag *PMONITOR;
+typedef struct filechangecallback_tag *PCHANGEHANDLER;
+typedef struct filemonitor_tag *PFILEMON;
+// bTree monitors this path and all sub-paths...
+// (in theory)
+// mask is a file mask to match - supports DOS style * and ?
+FILEMONITOR_PROC(PMONITOR, MonitorFiles )( CTEXTSTR directory, int scan_delay );
+// if monitor_file_flag_subcurse is used, every subdirectory gets a notification for every file in it.
+// the default scan of '*' is used.
+// make sure we use the same symbol as the filescan so we can just pass that on.
+#define MONITOR_FILE_FLAG_SUBCURSE SFF_SUBCURSE
+FILEMONITOR_PROC( PMONITOR, MonitorFilesEx )( CTEXTSTR directory, int scan_delay, int flags );
+// end a single monitor....
+FILEMONITOR_PROC( void, EndMonitor )( PMONITOR monitor );
+// close all file monitors....
+FILEMONITOR_PROC(void, EndMonitorFiles )( void );
+// Log files read in the directory for this monitor.  Log matches per handler
+FILEMONITOR_PROC( void, SetFileLogging )( PMONITOR monitor, int enable );
+// return TRUE if okay to get next, return FALSE to
+// stop processing and wait until next...
+typedef int (CPROC *CHANGEHANDLER)(uintptr_t psv
+											 , CTEXTSTR filepath
+											 , int bDeleted);
+FILEMONITOR_PROC( PCHANGEHANDLER, AddFileChangeCallback )( PMONITOR monitor
+                                               , CTEXTSTR mask
+															  , CHANGEHANDLER HandleChange
+															  , uintptr_t psv );
+typedef int (CPROC *EXTENDEDCHANGEHANDLER)( uintptr_t psv
+														, CTEXTSTR filepath
+														, uint64_t size
+														, uint64_t time
+ // file has just now been created.
+														, LOGICAL bCreated
+ // it's a directory (add another monitor?)
+                                          , LOGICAL bDirectory
+ // file was just now deleted.
+														, LOGICAL bDeleted);
+FILEMONITOR_PROC( PCHANGEHANDLER, AddExtendedFileChangeCallback )( PMONITOR monitor
+																		, CTEXTSTR mask
+																		, EXTENDEDCHANGEHANDLER HandleChange
+																		, uintptr_t psv );
+FILEMONITOR_PROC( PFILEMON, AddMonitoredFile )( PCHANGEHANDLER Change, CTEXTSTR name );
+FILEMONITOR_PROC( void, EverybodyScan )( void );
+FILEMONITOR_PROC( void, MonitorForgetAll )( PMONITOR monitor );
+FILEMONITOR_PROC( void, SetFMonitorForceScanTime )( PMONITOR monitor, uint32_t delay );
+// returns 0 if no changed were pending, else returns number
+// of changes dispatched (not nessecarily handled)
+FILEMONITOR_PROC( int, DispatchChanges )( PMONITOR monitor );
+FILEMON_NAMESPACE_END
+#ifdef __cplusplus
+using namespace sack::filesys::monitor;
+#endif
+#endif
+//----------------------------------------------------------------------
+//
+// $Log: filemon.h,v $
+// Revision 1.6  2005/02/23 13:01:35  panther
+// Fix scrollbar definition.  Also update vc projects
+//
+// Revision 1.5  2004/12/01 23:15:58  panther
+// Extend file monitor to make forced scan timeout settable by the application
+//
+// Revision 1.4  2004/01/16 17:07:08  d3x0r
+// Header updates...
+//
+// Revision 1.3  2003/11/09 22:31:36  panther
+// Add extended monitor registration
+//
+// Revision 1.2  2003/11/04 11:39:15  panther
+// Modified interface to monitor files
+//
+// Revision 1.1  2003/11/03 23:01:49  panther
+// Initial commit of librarized filemonitor
+//
+/* more documentation at end */
+/*
+ *
+ *   Creator: Panther   #implemented in Dekware
+ *   Modified by: Jim Buckeyne #ported to service SQL via proxy.
+ *   Returned to sack by: Jim Buckeyne
+ *                  # stripped application specific
+ *                  # features, returned to SACK.
+ *
+ *  Provides a simple, intuitive interface to SQL.  Used sensibly,
+ *  provides garbage collection of resources.
+ *
+ *  Commands without an ODBC specifier are the perferred method to
+ *  use this interface.  This allows the internal system to maintain
+ *  a primary and a redundant backup connection to provide transparent
+ *  reliability to the application.
+ *
+ *  Provides some slick table creation routines
+ *     - check for existance, and drop  (CTO_DROP)
+ *     - check for existance, and match (CTO_MATCH)
+ *     - check for existance, and merge (CTO_MERGE)
+ *     - create table if not exist.
+ *
+ *  Latest additions provide ...RecordQuery... functions which
+ *  result with a const CTEXTSTR * of results;  (ie, result[0] = (CTEXTSTR)result1 )
+ *  also available are the column names from the query.
+ *  I strongly recommend passing NULL always to the field names, and
+ *  using sensible enumerators that follow the query definition.
+ *
+ *  (c)Freedom Collective (Jim Buckeyne 2000-2016)
+ *
+ */
+#ifndef PSSQL_STUB_DEFINED
+/* multiple inclusion protection symbol */
+#define PSSQL_STUB_DEFINED
+#if defined( SQLSTUB_SOURCE ) || defined( SQLPROXY_LIBRARY_SOURCE )
+#define PSSQL_PROC(type,name) EXPORT_METHOD type CPROC name
+#else
+#define PSSQL_PROC(type,name) IMPORT_METHOD type CPROC name
+#endif
+#ifdef __cplusplus
+#define _SQL_NAMESPACE   namespace sql {
+#define _SQL_NAMESPACE_END   }
+#define SQL_NAMESPACE   namespace sack { namespace sql {
+#define SQL_NAMESPACE_END } }
+#else
+#define _SQL_NAMESPACE
+#define _SQL_NAMESPACE_END
+#define SQL_NAMESPACE
+#define SQL_NAMESPACE_END
+#endif
+SACK_NAMESPACE
+/* SQL access library. This provides a simple access to ODBC
+   connections, and to sqlite. If no database is specified,
+   there is an internal database that can be used. These methods
+   on the PODBC connection are NOT thread safe. Multiple threads
+   shall never use the same PODBC; they can use seperate PODBC
+   connections. Under linux this links to unixODBC.
+   DoSQLCommandf
+   DoSQLRecordQueryf
+   GetSQLRecord
+   ConnectToDatabase
+   DoSQLCommandf
+   DoSQLRecordQueryf
+   FetchSQLRecord
+   There is a configuration file for the default SQL connection,
+   this is kept in a file 'sql.config' which is processed with
+   ProcessConfigurationFile(); If this file does not exist, it
+   will be automatically created with default values.
+   (Need to describe this sql.config file)                       */
+_SQL_NAMESPACE
+/* <combine PSSQL_PROC>
+   \ \                    */
+#define SQLPROXY_PROC PSSQL_PROC
+/* This is the connection object that provides interface to the
+   database. Can be NULL to specify the default connection
+   interface. See namespace <link sack::sql, sql>.
+   An ODBC connection handles commands as a stack. Each command
+   is done as a temporary entry on the stack. A query is done as
+   an entry on the stack, but the entry remains on the stack
+   until the final result is retrieved or an early PopODBC is
+   called.
+   The structure of this is such that if a command is slow to a
+   database, it would be possible to stack commands that are
+   temporary and pending until the database connection is
+   restored.
+   Example
+   <code lang="c++">
+   int f( void )
+   {
+       // results from the query
+       CTEXTSTR *results;
+       // connect.
+       PODBC odbc = ConnectToDatabase( "system_dsn_name" );
+       // do a command, does a temporary entry on the stack, unless the database is slow
+       SQLCommandf( odbc, "create temporary table my_test_table( ID int, value int )" );
+       // start a new entry on the command stack.
+       SQLRecordQueryf( odbc, NULL, &amp;results, NULL, "select 1+1" );
+       // when this command is done, it is stacked on the query.
+       SQLCommandf( odbc, "insert into my_test_table (value) values(%d)", 1234 );
+       // at this point there is technically 2 entries on the command stack until the next
+       // FetchSQLResult( odbc, &amp;results );
+   }
+	</code>                                                                                 */
+#if !defined( __GNUC__ ) || !defined( SQLSTUB_SOURCE )
+   // GCC doesn't identify this as exactly the same declaration
+	typedef struct odbc_handle_tag *PODBC;
+#endif
+typedef struct odbc_handle_tag ODBC;
+// recently added {} container braces for structure element
+#define FIELDS(n) {( sizeof( n ) / sizeof( FIELD ) ), n}
+/* a field definition can be a rename, and contain prior names,
+   so that the rename can be tracked and migrated appropraitely.
+   Unfortuntaly this sort of operation only affects this code,
+   and not all auxiliary code.                                   */
+#define MAX_PREVIOUS_FIELD_NAMES 4
+/* <combine sack::sql::required_field_tag>
+   <code lang="c++">
+     FIELD fields[] = { { "ID", "int" }, ... };
+   </code>                                            */
+typedef struct required_field_tag
+{
+	/* This is the name of the column described in this table. */
+	CTEXTSTR name;
+	/* pointer to a string describing the type of this column.  */
+	CTEXTSTR type;
+	/* extra information about the field... grab all addtional
+	   information like 'NOT NULL' "default 'zxa'" to describe a
+	   field. Sometimes target databases don't understand extra
+	   \parameters, and these can be translated as required or
+	   ignored.                                                  */
+	CTEXTSTR extra;
+	// if you have renamed this column more than 1
+	// times - you really need to stop messing around
+	// and get a life.
+	CTEXTSTR previous_names[MAX_PREVIOUS_FIELD_NAMES];
+} FIELD, *PFIELD;
+#if !defined( _MSC_VER ) || ( _MSC_VER >= 800 )
+/* A macro to append a NULL automatically to a list of strings.
+   Example
+   <code lang="c++">
+   CTEXTSTR strings[] = { KEY_COLUMNS( "one", "two", "three" ) };
+   </code>
+   strings will be set to 4 elements with the 3 strings listed
+   in KEY_COLUMNS plus a NULL string.                             */
+#define KEY_COLUMNS(...) { __VA_ARGS__, NULL }
+#endif
+/* sets the count and the array of a statically declared
+   required_table_tag.
+   Example
+   <code lang="c++">
+   </code>
+   <code>
+   FIELD fields[5];
+   DB_KEY_DEF keys[3];
+   TABLE table = { "table_name", FIELDS( fields ), TABLE_KEYS( keys ) };
+   </code>
+   This creates a static table definition with the name
+   "table_name" and 5 fields with 3 keys. fields[] = { } is
+   usally the declartion. Also DB_KEY_DEF keys[] = { ... }; for
+   keys.
+                                                                         */
+#define TABLE_KEYS(n) {( sizeof( n ) / sizeof( DB_KEY_DEF ) ), n}
+/* maximum columns that can be specified for a multicolumn index
+   in required_key_def.                                          */
+#define MAX_KEY_COLUMNS 8
+/* <combine sack::sql::required_key_def>
+   \ \                                   */
+typedef struct required_key_def  DB_KEY_DEF;
+enum uniqueResolutions {
+  // no on conflict specification.
+	UNIQRES_UNSET = 0,
+	UNIQRES_REPLACE,
+	UNIQRES_IGNORE,
+	UNIQRES_FAIL,
+	UNIQRES_ABORT,
+	UNIQRES_ROLLBACK
+};
+/* <combine sack::sql::required_key_def>
+   \ \                                   */
+typedef struct required_key_def  *PDB_KEY_DEF;
+struct required_key_def
+{
+	/* Flags describing attributes of this key */
+	/* <combine sack::sql::required_key_def::flags@1>
+	   \ \                                            */
+	struct {
+		/* this defines the primary key for the table */
+		BIT_FIELD bPrimary : 1;
+		/* the key is meant to be unique. */
+		BIT_FIELD bUnique : 1;
+		BIT_FIELD uniqueResolution : 3;
+	} flags;
+	/* Name of the key column. Can be NULL if primary. */
+	CTEXTSTR name;
+ // uhm up to 5 colnames...
+	CTEXTSTR colnames[MAX_KEY_COLUMNS];
+ // if not null, broken structure...
+	CTEXTSTR null;
+#ifdef __cplusplus
+   /* <combine sack::sql::required_key_def>
+      This is used when actually building C++ for providing an
+      initializer to this structure.                           */
+   required_key_def( int bPrimary, int bUnique, CTEXTSTR _name, CTEXTSTR colname1 ) { flags.bPrimary = bPrimary; flags.bUnique = bUnique; name = _name; colnames[0] = colname1; colnames[1] = NULL; }
+   /* <combine sack::sql::required_key_def>
+      This is used when actually building C++ for providing an
+      initializer to this structure.                           */
+   required_key_def( int bPrimary, int bUnique, CTEXTSTR _name, CTEXTSTR colname1, CTEXTSTR colname2 ) { flags.bPrimary = bPrimary; flags.bUnique = bUnique; name = _name; colnames[0] = colname1; colnames[1] = colname2; colnames[2] = 0; }
+	/* Just another required_key_def constructor. */
+	required_key_def( int bPrimary, int bUnique, CTEXTSTR _name, CTEXTSTR colname1, CTEXTSTR colname2, CTEXTSTR colname3 ) { flags.bPrimary = bPrimary; flags.bUnique = bUnique; name = _name; colnames[0] = colname1; colnames[1] = colname2; colnames[2] = colname3; colnames[3] = 0; }
+#else
+#define required_key_def( a,b,c,...) { {a,b}, c, {__VA_ARGS__} }
+#endif
+};
+ /* Describes a key column of a table.
+      <code lang="c++">
+      DB_KEY_DEF keys[] = { { "lockey", KEY_COLUMNS("hall_id","charity_id") } };
+      </code>                                                                    */
+/* <combine sack::sql::required_constraint_def>
+   \ \                                   */
+typedef struct required_constraint_def  DB_CONSTRAINT_DEF;
+/* <combine sack::sql::required_constraint_def>
+   \ \                                   */
+typedef struct required_constraint_def  *PDB_CONSTRAINT_DEF;
+struct required_constraint_def
+{
+	struct {
+		BIT_FIELD cascade_on_delete : 1;
+		BIT_FIELD cascade_on_update : 1;
+		BIT_FIELD restrict_on_delete : 1;
+		BIT_FIELD restrict_on_update : 1;
+		BIT_FIELD noaction_on_delete : 1;
+		BIT_FIELD noaction_on_update : 1;
+		BIT_FIELD setnull_on_delete : 1;
+		BIT_FIELD setnull_on_update : 1;
+		BIT_FIELD setdefault_on_delete : 1;
+		BIT_FIELD setdefault_on_update : 1;
+		BIT_FIELD foreign_key : 1;
+	} flags;
+	CTEXTSTR name;
+ // uhm up to 5 colnames...
+	CTEXTSTR colnames[MAX_KEY_COLUMNS];
+	CTEXTSTR references;
+ // uhm up to 5 colnames...
+	CTEXTSTR foriegn_colnames[MAX_KEY_COLUMNS];
+ // if not null, broken structure...
+	CTEXTSTR null;
+ // Describes a constraint clause
+};
+/* Example
+   By default, CreateTable( CTEXTSTR tablename, CTEXTSTR
+   filename ) which reads a 'create table' statement from a file
+   to create a table, this now parses the create table structure
+   into an internal structure TABLE which has FIELDs and
+   DB_KEY_DEFs. This structure is now passed to CheckODBCTable
+   which is able to compare the structure with the table
+   definition available from the database via DESCRIBE TABLE,
+   and then update the table in the database to match the TABLE
+   definition.
+   One can use the table structure to define tables instead of
+   maintaining external files... and without having to create a
+   temporary external file which could then contain a create
+   table statement to create the table.
+   <code>
+   // declare some fields...
+   FIELD some_table_field_array_name[] = { { "field one", "int", NULL }
+   , { "field two", "varchar(100)", NULL }
+   , { "ID field", "int", "auto_increment" }
+   , { "some other field", "int", "NOT NULL default '8'" }
+   };
+   // define some keys...
+   DB_KEY_DEF some_table_key_array_name[] = { { .flags = { .bPrimary = 1 }, NULL, {"ID Field"} }
+   , { {0}, "namekey", { "field two", NULL } }
+   };
+   </code>
+   // the structure for DB_KEY_DEF takes an array of column
+   names used to define the key, there should be a NULL to end
+   the list. The value after the array of field names is called
+   'null' which should always be set to NULL. If these are
+   declared in global data space, then any unset value will be
+   initialized to zero.
+   <code>
+   TABLE some_table_var_name = { "table name", FIELDS( some_table_field_array_name ), TABLE_KEYS( some_table_key_array_name ), 1 );
+    LOGICAL CheckODBCTable( PODBC odbc, PTABLE table, uint32_t options )
+        PODBC odbc - may be left NULL to use the default database connection.
+        PTABLE table - a pointer to a TABLE structure which has been initialized.
+        uint32_t options - zero or more of  the following symbols or'ed together.
+                   \#define CTO_MATCH 4  // attempt to figure out alter statements to drop or add columns to exact match definition
+                   \#define CTO_MERGE 8  // attempt to figure out alter statements to add missing columns, do not drop.  Rename?
+   </code>
+   Then some routine later
+   <code>
+   {
+      ...
+      CheckODBCTable( NULL, &amp;some_table_var_name, CTO_MERGE );
+      ..
+   }
+   </code>
+   * ---------------------------------------------------------- *
+   alternatively tables may be checked and updated using the
+   following code, given an internal constant text string that
+   is the create table statement, this may be parsed into a
+   PTABLE structure which the resulting table can be used in
+   CheckODBCTable();
+   <code>
+   static CTEXTSTR create_player_info = "CREATE TABLE `players_info` ("
+         "  `player_id` int(11) NOT NULL auto_increment,           "
+         "  PRIMARY KEY  (`player_id`),                            "
+         ")                               ";
+   PTABLE table = GetFieldsInSQL( create_player_info, FALSE );
+   CheckODBCTable( NULL, table, CTO_MERGE );
+   DestroySQLTable( table );
+   </code>                                                                                                                          */
+struct required_table_tag
+{
+	/* This is the name of the table. */
+	CTEXTSTR name;
+	/* describes the columns (fields) in a table. */
+	struct pssql_table_fields {
+		/* number of fields in the array pointed at by field. */
+		int count;
+		/* pointer to an array of FIELD. */
+		PFIELD field;
+	} fields;
+	/* Describes the keys on the table.  */
+	/* <combine sack::sql::required_table_tag::keys@1>
+	   \ \                                             */
+	struct pssql_table_key {
+		/* number of keys pointed at by key. */
+		int count;
+      /* pointer to an array of DB_REQ_KEY. */
+      PDB_KEY_DEF key;
+	} keys;
+	struct pssql_table_constraint {
+		int count;
+		PDB_CONSTRAINT_DEF constraint;
+	} constraints;
+	/* <combine sack::sql::required_table_tag::flags@1>
+	   \ \                                              */
+	/* flags controlling the table. */
+		struct pssql_table_flags {
+         // set this if defined dynamically (from getfields in SQL)
+		BIT_FIELD bDynamic : 1;
+		/* This is a table that is allocated in memory, static table
+		   definitions should leave this 0.                          */
+		BIT_FIELD bTemporary : 1;
+		/* Issue the create statement always, but include 'if not
+		   exists'. Don't try and compare the table structure.    */
+		BIT_FIELD bIfNotExist : 1;
+	} flags;
+   /* name of another table that already exists. Creates this table
+      using that table's description.                               */
+   CTEXTSTR create_like_table_name;
+   /* name of the database that contains this table. */
+   CTEXTSTR database;
+   /* an additional field that can specify the database storage
+      engine to use. (Hmm maybe use this to specify sqlite target?) */
+   CTEXTSTR type;
+   /* This is an additional field to add as a description to the
+      database if supported by the target database.              */
+   CTEXTSTR comment;
+};
+/* <combine sack::sql::required_table_tag>
+   \ \                                     */
+typedef struct required_table_tag TABLE;
+/* <combine sack::sql::required_table_tag>
+   \ \                                     */
+typedef struct required_table_tag *PTABLE;
+/* Checks a table in a database to see if it exists, and that
+   all the columns in the table definition passed exist as
+   column in the database. Will generate alter statements to the
+   table as appropriate.
+   Parameters
+   odbc :     connection to check the table on
+   table :    a table which was created with GetFieldsInSQL, or
+              created by filling in a structure.
+   options :  Options from CreateTableOptions.                   */
+PSSQL_PROC( LOGICAL, CheckODBCTableEx)( PODBC odbc, PTABLE table, uint32_t options DBG_PASS );
+/* Checks a table in a database to see if it exists, and that
+   all the columns in the table definition passed exist as
+   column in the database. Will generate alter statements to the
+   table as appropriate.
+   Parameters
+   odbc :     connection to check the table on
+   table :    a table which was created with GetFieldsInSQL, or
+              created by filling in a structure.
+   options :  Options from CreateTableOptions.                   */
+PSSQL_PROC( LOGICAL, CheckODBCTable)( PODBC odbc, PTABLE table, uint32_t options );
+/* <combine sack::sql::CheckODBCTableEx@PODBC@PTABLE@uint32_t options>
+   \ \                                                            */
+#define CheckODBCTable(odbc,t,opt) CheckODBCTableEx(odbc,t,opt DBG_SRC )
+/* Enable or disable logging SQL to the sql.log file and to the
+   application's log.
+   Parameters
+   odbc :      connection to disable logging on
+   bDisable :  if TRUE disables logging, else restores logging. */
+PSSQL_PROC( void, SetSQLLoggingDisable )( PODBC odbc, LOGICAL bDisable );
+#ifndef SQLPROXY_INCLUDE
+// result is FALSE on error
+// result is TRUE on success
+PSSQL_PROC( int, DoSQLCommandEx )( CTEXTSTR command DBG_PASS);
+#endif
+/* <combine sack::sql::DoSQLCommandEx@CTEXTSTR command>
+   \ \                                                  */
+#define DoSQLCommand(c) DoSQLCommandEx(c DBG_SRC )
+/* Generate a commit for any outstanding transactions. Commit
+   syntax is variable depending on the connection. Connections
+   also have the feature to auto generate begin transaction, and
+   flush after a period of idle.
+   Parameters
+   odbc :  connection to database to commit                      */
+PSSQL_PROC( void, SQLCommit )( PODBC odbc );
+/* generates the begin transaction for a commection.
+   Parameters
+   odbc :  connection to database to start a transaction        */
+PSSQL_PROC( void, SQLBeginTransact )( PODBC odbc );
+// parameters to this are pairs of "name", type, "value"
+//  type == 0 - value is text, do not quote
+//  type == 1 - value is text, add quotes appropriate for database
+//  type == 2 - value is an integer, do not quote
+// the last pair's name is NULL, and value does not matter.
+// insert values into said table.
+PSSQL_PROC( int, DoSQLInsert )( CTEXTSTR table, ... );
+#ifndef SQLPROXY_INCLUDE
+/* This opens or re-opens a database connection. Mostly an
+   \internal function(?)
+   Parameters
+   odbc :  connection to open.                             */
+PSSQL_PROC( int, OpenSQLConnection )( PODBC );
+#endif
+/* This opens or re-opens a database connection. Mostly an
+   \internal function(?)
+   Parameters
+   odbc :  connection to open.                             */
+PSSQL_PROC( int, OpenSQLConnectionEx )( PODBC DBG_PASS );
+/* <combine sack::sql::OpenSQLConnectionEx@PODBC>
+   \ \                                            */
+#define OpenSQLConnect(o) OpenSQLConnectionEx( o DBG_SRC )
+// should pass to this a &(CTEXTSTR) which starts as NULL for result.
+// result is FALSE on error
+// result is TRUE on success, and **result is updated to
+// contain the resulting data.
+PSSQL_PROC( int, DoSQLQueryEx )( CTEXTSTR query, CTEXTSTR *result DBG_PASS);
+/* <combine sack::sql::DoSQLQueryEx@CTEXTSTR@CTEXTSTR *result>
+   \ \                                                         */
+#define DoSQLQuery(q,r) DoSQLQueryEx( q,r DBG_SRC )
+/* <combine sack::sql::DoSQLRecordQueryf@int *@CTEXTSTR **@CTEXTSTR **@CTEXTSTR@...>
+   \ \                                                                               */
+#define DoSQLRecordQuery(q,r,c,f) SQLRecordQueryEx( NULL,q,r,c,f DBG_SRC )
+/* <combine sack::sql::SQLRecordQueryEx@PODBC@CTEXTSTR@int *@CTEXTSTR **@CTEXTSTR **fields>
+   \ \                                                                                      */
+#define DoSQLQueryRecord(q,r,c)   DoSQLRecordQuery(q,r,c,NULL)
+/* <combine sack::sql::SQLRecordQueryEx@PODBC@CTEXTSTR@int *@CTEXTSTR **@CTEXTSTR **fields>
+   \ \                                                                                      */
+#define SQLQueryRecord(o,q,r,c)   SQLRecordQuery(o,q,r,c,NULL)
+/* <combine sack::sql::GetSQLRecord@CTEXTSTR **>
+   \ \                                           */
+#define GetSQLResultRecord(r,c)   GetSQLRecord(c)
+/* <combine sack::sql::FetchSQLResult@PODBC@CTEXTSTR *>
+   \ \                                                  */
+PSSQL_PROC( int, GetSQLResult )( CTEXTSTR *result );
+/* <combine sack::sql::FetchSQLRecord@PODBC@CTEXTSTR **>
+   \ \                                                   */
+PSSQL_PROC( int, GetSQLRecord )( CTEXTSTR **result );
+/* Gets the last result on the default ODBC connection.
+   Parameters
+   result\ :  address of a string pointer to get set to the error
+              string.
+   Example
+   <code>
+   {
+      CTEXTSTR error;
+      GetSQLError( &amp;error );
+      printf( "Error: %s", error );
+   }
+   </code>                                                        */
+PSSQL_PROC( int, GetSQLError )( CTEXTSTR *result );
+/* This is a test command that tests to see if the default
+   database connection is able to work.                    */
+PSSQL_PROC( int, IsSQLReady )( void );
+/* <combine sack::sql::PushSQLQueryExEx@PODBC>
+   \ \                                         */
+PSSQL_PROC( int, PushSQLQuery )( void );
+/* <combine sack::sql::PopODBCEx@PODBC>
+   \ \                                  */
+PSSQL_PROC( void, PopODBC )( void );
+#ifndef SQLPROXY_INCLUDE
+/* Clear the top non temporary sql statement from the PODBC
+   stack.
+   Parameters
+   odbc :  connection to remove the statement from.
+   Remarks
+   A SQLCommand is temporary, a SQLQuery or a PushODBC is not. Pop
+   MAY be used to clear a query early, but it is recommended to
+   read to the end of it instead.                                  */
+PSSQL_PROC( void, PopODBCExx )( PODBC, LOGICAL DBG_PASS );
+PSSQL_PROC( void, PopODBCEx )( PODBC );
+/* <combine sack::sql::PopODBCExx@PODBC@LOGICAL>
+   \ \                                           */
+#define PopODBCEx(o) PopODBCExx(o,FALSE DBG_SRC)
+/* <combine sack::sql::PopODBCEx>
+   \ \                            */
+#define PopODBC() PopODBCExx(NULL,FALSE DBG_SRC)
+#endif
+/* This terminates a query on the PODBC stack. (It was mentioned
+   in pop odbc that it could be used to terminate a query, but
+   that will log that a pop is being done without a push. This
+   is the proper way to prematurely end a query.)
+   Parameters
+   odbc :  connection to end a query on.                         */
+PSSQL_PROC( void, SQLEndQuery )( PODBC odbc );
+// release any open queries on the database... all result
+// sets are now invalid... uhmm what about things like fields?
+// could be messy...
+PSSQL_PROC( void, ReleaseODBC )( PODBC odbc );
+// does a query responce kinda thing returning types.
+// if( GetSQLTypes() ) while( GetSQLResult( &result ) && result )
+PSSQL_PROC( int, GetSQLTypes )( void );
+#ifndef SQLPROXY_INCLUDE
+/* parse the string passed as a date/time as returned from a
+   MySQL database.
+   Parameters
+   date :    string to parse
+   year :    pointer to an int that will receive the year portion
+             of the date
+   month :   pointer to an int that will receive the month
+             portion of the date
+   day :     pointer to an int that will receive the day portion
+             of the date
+   hour :    pointer to an int that will receive the hours
+             portion of the date
+   minute :  pointer to an int that will receive the minutes
+             portion of the date
+   second :  pointer to an int that will receive the second
+             portion of the date
+   msec :    pointer to an int that will receive the milli\-second
+             portion of the date
+   nsec :    pointer to an int that will receive the nano second portion
+             of the date                                                 */
+PSSQL_PROC( void, ConvertSQLDateEx )( CTEXTSTR date
+												  , int *year, int *month, int *day
+												  , int *hour, int *minute, int *second
+												  , int *msec, int32_t *nsec
+												  , int *zone_hr, int *zone_mn
+												  );
+#endif
+/* <combine sack::sql::ConvertSQLDateEx@CTEXTSTR@int *@int *@int *@int *@int *@int *@int *@int32_t *>
+   \ \                                                                                             */
+#define ConvertSQLDate( date, y,m,d) ConvertSQLDateEx( date,y,m,d,NULL,NULL,NULL,NULL,NULL)
+/* <combine sack::sql::ConvertSQLDateEx@CTEXTSTR@int *@int *@int *@int *@int *@int *@int *@int32_t *>
+   \ \                                                                                             */
+#define ConvertSQLDateTime( date, y,mo,d,h,mn,s) ConvertSQLDateEx( date,y,mo,d,h,mn,s,NULL,NULL)
+//------------------------------
+// this set of functions will auto create a suitable name table
+// providing table_name_id and table_name_name as the columns to query by standard
+// previous defaults where "id" and "name" which results in inability to use natural join
+//
+PSSQL_PROC( INDEX, FetchSQLNameID )( PODBC odbc, CTEXTSTR table_name, CTEXTSTR name );
+/* A specialized function which takes a name, looks in a SQL
+   table on the default database connection for in column
+   'name', and returns the value in the 'ID' column. This
+   function may create a table with the required fields. This
+   table is very bad, if you have 3 tables all with the same
+   'name' column reverse engineering and natural join clauses
+   fail.
+   Parameters
+   table_name :  name of the table to get the name's ID from.
+   name :        name to lookup its ID for.
+   Returns
+   the ID of the name or INVALID_INDEX if not found.          */
+PSSQL_PROC( INDEX, GetSQLNameID )( CTEXTSTR table_name, CTEXTSTR name );
+/* Still a bad function to use.... just don't.
+   Parameters
+   odbc :        _nt_
+   table_name :  _nt_
+   iName :       _nt_                          */
+PSSQL_PROC( CTEXTSTR, FetchSQLName )( PODBC odbc, CTEXTSTR table_name, INDEX iName );
+/* A specialized function which takes an ID, looks in a SQL
+   table on the default database connection for in column 'ID',
+   and returns the value in the 'name' column. This function may
+   create a table with the required fields. This table is very
+   bad, if you have 3 tables all with the same 'name' column
+   reverse engineering and natural join clauses fail.
+   Parameters
+   table_name :  name of the database table to read from
+   iName :       ID of the name to get                           */
+PSSQL_PROC( CTEXTSTR, GetSQLName )( CTEXTSTR table_name, INDEX iName );
+/* <combine sack::sql::SQLReadNameTableExEx@PODBC@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@int bCreate>
+   \ \
+   Note
+   If database connection is not specified or is NULL, uses the
+   default SQL connection.                                                                         */
+PSSQL_PROC( INDEX, ReadNameTableExEx)( CTEXTSTR name, CTEXTSTR table, CTEXTSTR col, CTEXTSTR namecol, int bCreate DBG_PASS );
+/* <combine sack::sql::ReadNameTableExEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@int bCreate>
+   \ \                                                                                    */
+#define ReadNameTableExx( name,table,col,namecol,bCreate) ReadNameTableExEx( name,table,col,namecol,bCreate DBG_SRC )
+//column name if NOT specified will be 'ID'
+PSSQL_PROC( INDEX, ReadNameTableEx)( CTEXTSTR name, CTEXTSTR table, CTEXTSTR col DBG_PASS );
+/* <combine sack::sql::ReadNameTableExEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@int bCreate>
+   \ \                                                                                    */
+#define ReadNameTable(n,t,c) ReadNameTableExEx( n,t,c, "name",TRUE DBG_SRC )
+/* <combine sack::sql::ReadFromNameTableExEx@INDEX@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR *result>
+   \ \                                                                                          */
+PSSQL_PROC( int, ReadFromNameTableEx )( INDEX id, CTEXTSTR table, CTEXTSTR id_colname, CTEXTSTR name_colname, CTEXTSTR *result DBG_PASS);
+/* TRUE if name in result... again if !colname colname = 'ID'
+   Parameters
+   odbc :       connection to use
+   id :         ID of the name to read
+   table :      table to read from
+   id_column :  name of the column that contains the ID
+   colname :    name of the column that is where the name is
+   result\ :    pointer to a CTEXTSTR which will be filled with
+                the name in the table                           */
+PSSQL_PROC( int, ReadFromNameTableExEx )( INDEX id, CTEXTSTR table, CTEXTSTR id_column, CTEXTSTR colname, CTEXTSTR *result DBG_PASS);
+/* <combine sack::sql::ReadFromNameTableExEx@INDEX@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR *result>
+   \ \                                                                                          */
+#define ReadFromNameTableExx(id,t,ic,nc,r) ReadFromNameTableExEx(id,t,ic,nc,r DBG_SRC )
+/* <combine sack::sql::ReadFromNameTableEx@INDEX@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR *result>
+   \ \                                                                                        */
+#define ReadFromNameTable(id,t,c,r) ReadFromNameTableEx(id,t,c,"name",r DBG_SRC )
+/* This is a better name resolution function. It will also
+   create a table that contains the required columns, but the
+   column names may be more intelligent than 'ID' and 'name'.
+   Parameters
+   odbc :     database connection to read from
+   name :     the name to lookup the ID for
+   table :    table the name column is in
+   col :      name of the key column(s) to read.
+   namecol :  name of column containing the name to lookup.
+   bCreate :  if TRUE, will insert the name into the table, and
+              return the resulting columns.                     */
+PSSQL_PROC( TEXTSTR, SQLReadNameTableKeyExEx)( PODBC odbc, CTEXTSTR name, CTEXTSTR table, CTEXTSTR col, CTEXTSTR namecol, int bCreate DBG_PASS );
+/* This is a better name resolution function. It will also
+   create a table that contains the required columns, but the
+   column names may be more intelligent than 'ID' and 'name'.
+   Parameters
+   odbc :     database connection to read from
+   name :     the name to lookup the ID for
+   table :    table the name column is in
+   col :      name of the key column(s) to read.
+   namecol :  name of column containing the name to lookup.
+   bCreate :  if TRUE, will insert the name into the table, and
+              return the resulting columns.                     */
+PSSQL_PROC( INDEX, SQLReadNameTableExEx)( PODBC odbc, CTEXTSTR name, CTEXTSTR table, CTEXTSTR col, CTEXTSTR namecol, int bCreate DBG_PASS );
+/* <combine sack::sql::SQLReadNameTableExEx@PODBC@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@int bCreate>
+   \ \                                                                                             */
+#define SQLReadNameTableExx( odbc,name,table,col,namecol,bCreate) SQLReadNameTableExEx( odbc,name,table,col,namecol,bCreate DBG_SRC )
+/* <combine sack::sql::SQLReadNameTableExEx@PODBC@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@int bCreate>
+   \ \                                                                                             */
+#define SQLReadNameTable(o,n,t,c) SQLReadNameTableExEx( o,n,t,c,"name",TRUE DBG_SRC )
+/* Reads a table that's assumed to be a primary key ID and a
+   name sort of dictionary table. This also maintains an
+   \internal cache of names queried, since it is assumed words
+   in a dictionary don't move or change.
+   Parameters
+   odbc :      odbc connection to use
+   name :      name to get the index of
+   table :     table to get the index from
+   col :       column name of the ID columns (macros allow this to
+               be defaulted)
+   namecol :   column name of the name column (macros allow this to
+               be defaulted)
+   bCreate :   If the name doesn't exist, setting this to TRUE will
+               insert the new name, else return will be
+               INVALID_INDEX.
+   bQuote :    Indicates if the name should be quoted (else use no
+               quotes)
+   DBG_PASS :  _nt_                                                 */
+PSSQL_PROC( INDEX, GetNameIndexExtended)( PODBC odbc, CTEXTSTR name, CTEXTSTR table, CTEXTSTR col, CTEXTSTR namecol, int bCreate, int bQuote DBG_PASS );
+/* <combine sack::sql::GetNameIndexExtended@PODBC@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@int@int bQuote>
+   \ \                                                                                                */
+PSSQL_PROC( INDEX, GetNameIndexExx)( PODBC odbc, CTEXTSTR name, CTEXTSTR table, CTEXTSTR col, CTEXTSTR namecol, int bCreate DBG_PASS );
+/* <combine sack::sql::GetNameIndexExx@PODBC@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@int bCreate>
+   \ \                                                                                        */
+#define GetNameIndexEx( odbc,name,table,col,namecol,bCreate) GetNameIndexExx( odbc,name,table,col,namecol,bCreate DBG_SRC )
+/* <combine sack::sql::GetNameIndexExx@PODBC@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@int bCreate>
+   \ \                                                                                        */
+#define GetNameIndex(o,n,t,c) GetNameIndexExx( o,n,t,c,"name",TRUE DBG_SRC )
+// table and col are not used if a MySQL backend is used...
+// they are needed to get the last ID from a postgresql backend.
+PSSQL_PROC( INDEX, GetLastInsertIDEx)( CTEXTSTR table, CTEXTSTR col DBG_PASS );
+/* <combine sack::sql::GetLastInsertIDEx@CTEXTSTR@CTEXTSTR col>
+   \ \                                                          */
+#define GetLastInsertID(t,c) GetLastInsertIDEx(t,c DBG_SRC )
+/* Gets the ID of the primary key from the prior insert. This
+   value can be used in subsequent inserts to relate detail
+   records to a master.
+   Parameters
+   odbc :    database connection
+   table :   if NULL, just get's the connection's last insert
+             into whatever table. PostgreSQL requires a table
+             name and column name to get the last insert for. So,
+             proper portability for certain databases may use
+             this parameter.
+   column :  if NULL, just get's the connection's last insert id
+             from the auto increment primary key. PostgreSQL
+             requires a table name and column name to get the
+             last insert for. So, proper portability for certain
+             databases may use this parameter.
+   Returns
+   a 64 bit row identifier.                                       */
+PSSQL_PROC( INDEX, FetchLastInsertIDEx)( PODBC odbc, CTEXTSTR table, CTEXTSTR col DBG_PASS );
+/* <combine sack::sql::FetchLastInsertIDEx@PODBC@CTEXTSTR@CTEXTSTR col>
+   \ \                                                                  */
+#define FetchLastInsertID(o,t,c) FetchLastInsertIDEx(o,t,c DBG_SRC )
+/* <combine sack::sql::FetchLastInsertIDEx@PODBC@CTEXTSTR@CTEXTSTR col>
+   \ \                                                                  */
+#define FetchLastInsertKey(o,t,c) FetchLastInsertKeyEx(o,t,c DBG_SRC )
+/* <combine sack::sql::FetchLastInsertIDEx@PODBC@CTEXTSTR@CTEXTSTR col>
+   \ \                                                                  */
+PSSQL_PROC( CTEXTSTR, FetchLastInsertKeyEx)( PODBC odbc, CTEXTSTR table, CTEXTSTR col DBG_PASS );
+/* <combine sack::sql::GetLastInsertIDEx@CTEXTSTR@CTEXTSTR col>
+   \ \                                                          */
+PSSQL_PROC( CTEXTSTR, GetLastInsertKeyEx)( CTEXTSTR table, CTEXTSTR col DBG_PASS );
+/* <combine sack::sql::GetLastInsertIDEx@CTEXTSTR@CTEXTSTR col>
+   \ \                                                          */
+#define GetLastInsertKey(t,c) GetLastInsertKeyEx(t,c DBG_SRC )
+// CreateTable Options (CTO_)
+enum CreateTableOptions {
+   // drop old table before create.
+ CTO_DROP  = 1,
+  // attempt to figure out alter statements to drop or add columns to exact match definition
+ CTO_MATCH = 4,
+  // attempt to figure out alter statements to add missing columns, do not drop.  Rename?
+ CTO_MERGE = 8,
+ // log changes to "changes.sql"
+		CTO_LOG_CHANGES = 16
+};
+/* \ \
+   Parameters
+   odbc :          database connection to check table in
+   filename :      name of file containing sql CREATE TABLE
+                   statements.
+   templatename :  name of the table specified by the CREATE
+                   TABLE statement.
+   tablename :     table name to use when actually creating this.
+                   May be different from template table name.
+   options :       Options from CreateTableOptions.               */
+PSSQL_PROC( int, SQLCreateTableEx )(PODBC odbc, CTEXTSTR filename, CTEXTSTR templatename, CTEXTSTR tablename, uint32_t options );
+/* <combine sack::sql::SQLCreateTableEx@PODBC@CTEXTSTR@CTEXTSTR@CTEXTSTR@uint32_t>
+   \ \                                                                        */
+#define SQLCreateTable( odbc, file, table ) SQLCreateTableEx(odbc,file,table,table,0)
+/* Creates a table in a database by reading an external file
+   containing the table definition. It can also perform
+   iterative updates to table structure if the template
+   definition adds or deletes columns.
+   Parameters
+   filename :      filename to read the template from
+   templatename :  name of the table in the create table template
+                   statement.
+   tablename :     the name of the table to create (may be
+                   different than template)
+   options :       Options from CreateTableOptions.
+   Returns
+   TRUE if success.
+   FALSE if failure. (No further information)                     */
+PSSQL_PROC( int, CreateTableEx )( CTEXTSTR filename, CTEXTSTR templatename, CTEXTSTR tablename, uint32_t options );
+/* <combine sack::sql::CreateTableEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@uint32_t>
+   \ \                                                               */
+#define CreateTable( file, table ) CreateTableEx(file,table,table,0)
+// results in a static buffer with escapes filled in for characterws
+// which would otherwise conflict with string punctuators.
+PSSQL_PROC( TEXTSTR ,EscapeStringEx )( CTEXTSTR name DBG_PASS );
+/* <combine sack::sql::EscapeStringEx@CTEXTSTR name>
+   \ \                                               */
+#define EscapeString(s) EscapeStringEx( s DBG_SRC )
+/* <combine sack::sql::EscapeStringEx@CTEXTSTR name>
+   \ \                                               */
+#define EscapeStringOpt(s,q) EscapeSQLBinaryExx( NULL,s,StrLen(s),NULL, q DBG_SRC )
+/* \ \
+   Parameters
+   odbc :  connection to escape the string appropriately for. Different
+           database engines require different string escapes.
+   name :  string to escape
+   Returns
+   a TEXTSTR that is the content of the string passed properly
+   escaped.
+   it is appropriate to Release( result );
+   Example
+   This is difficult to describe coorectly, since in C, you have
+   to do escaping on the parameters anyhow....
+   <code lang="c++">
+   {
+       TEXTSTR result = EscapeSQLString( "\\"test \\'escape\\'" );
+       printf( "original : %s\\n"
+               "result   : %s\\n"
+             , "\\"test \\'escape\\'"
+             , \result );
+   }
+   </code>
+   \Output
+   <code lang="c++">
+   original : "test 'escape'
+   \result   : \\"test \\'escape\\'
+   </code>                                                              */
+PSSQL_PROC( TEXTCHAR *,EscapeSQLStringEx )( PODBC odbc, CTEXTSTR name DBG_PASS );
+/* <combine sack::sql::EscapeSQLStringEx@PODBC@CTEXTSTR name>
+   \ \                                                        */
+#define EscapeSQLString(odbc, s) EscapeSQLStringEx( odbc, s DBG_SRC )
+// the following functions return an allcoated buffer which the application must Release()
+PSSQL_PROC( TEXTSTR ,EscapeBinaryEx )( CTEXTSTR blob, uintptr_t bloblen DBG_PASS );
+/* <combine sack::sql::EscapeBinaryEx@CTEXTSTR@uintptr_t bloblen>
+   \ \                                                           */
+#define EscapeBinary(b,bl) EscapeBinaryEx(b,bl DBG_SRC )
+/* <combine sack::sql::EscapeBinaryEx@CTEXTSTR@uintptr_t bloblen>
+   \ \                                                           */
+#define EscapeBinaryOpt(b,bl,q) EscapeSQLBinaryExx(NULL,b,bl,NULL,q DBG_SRC )
+/* <combine sack::sql::EscapeBinaryEx@CTEXTSTR@uintptr_t bloblen>
+   \ \                                                           */
+PSSQL_PROC( TEXTSTR,EscapeSQLBinaryExx )( PODBC odbc, CTEXTSTR blob, size_t bloblen, size_t *resultLen, LOGICAL bQuote DBG_PASS );
+/* <combine sack::sql::EscapeBinaryEx@CTEXTSTR@uintptr_t bloblen>
+   \ \                                                           */
+//PSSQL_PROC( TEXTSTR,EscapeSQLBinaryEx )( PODBC odbc, CTEXTSTR blob, uintptr_t bloblen DBG_PASS );
+/* <combine sack::sql::EscapeSQLBinaryEx@PODBC@CTEXTSTR@uintptr_t bloblen>
+   \ \                                                                    */
+#define EscapeSQLBinary(odbc,blob,len) EscapeSQLBinaryExx( odbc,blob,len, NULL, FALSE DBG_SRC )
+/* <combine sack::sql::EscapeSQLBinaryEx@PODBC@CTEXTSTR@uintptr_t bloblen>
+   \ \                                                                    */
+#define EscapeSQLBinaryOpt(odbc,blob,len,q) EscapeSQLBinaryExx( odbc,blob,len,NULL,q DBG_SRC )
+#define EscapeSQLBinaryLen(odbc,blob,len,resLen,q) EscapeSQLBinaryExx( odbc,blob,len,resLen, q DBG_SRC )
+/* Remove escape sequences which are inserted into a text
+   string. (for things like quotes and binary characters?)
+   Parameters
+   name :  string to remove string escapes from
+   Returns
+   a copy of the string without quotes. This result should be
+   freed with Release when user is done with it.              */
+PSSQL_PROC( TEXTSTR ,RevertEscapeString )( CTEXTSTR name );
+/* Remove escape sequences which are inserted into a binary
+   string.
+   Parameters
+   blob :     pointer to data to remove binary escape sequences
+              from
+   bloblen :  length of the data block to handle
+   Returns
+   a pointer to the string without escapes. (Even though it says
+   binary, it's still to and from text?) This result should be
+   freed with Release when user is done with it.                 */
+PSSQL_PROC( TEXTSTR ,RevertEscapeBinary )( CTEXTSTR blob, size_t *bloblen );
+/* Parse a Blob string stored as hex... that is text character
+   0-9 and A-F.
+   Parameters
+   blob :    pointer to the string containing the blob string
+   buffer :  target buffer for data
+   buflen :  length of target buffer                           */
+PSSQL_PROC( TEXTSTR , DeblobifyString )( CTEXTSTR blob, TEXTSTR buffer, size_t buflen );
+/* parse the string passed as a date/time as returned from a
+   MySQL database.
+   Parameters
+   timestring :     string to parse
+   endtimestring :  pointer to a pointer to a string to receive
+                    the position of the character after the
+                    timestring.
+   year :           pointer to an int that will receive the year
+                    portion of the date
+   month :          pointer to an int that will receive the month
+                    portion of the date
+   day :            pointer to an int that will receive the day
+                    portion of the date
+   hour :           pointer to an int that will receive the hours
+                    portion of the date
+   minute :         pointer to an int that will receive the
+                    minutes portion of the date
+   second :         pointer to an int that will receive the
+                    second portion of the date
+   Returns
+   A true/false status whether the string passed was a valid
+   time string (?).                                               */
+PSSQL_PROC( int, ConvertDBTimeString )( CTEXTSTR timestring
+                                      , CTEXTSTR *endtimestring
+                                      , int *pyr, int *pmo, int *pdy
+                                      , int *phr, int *pmn, int *psc );
+#ifndef SQLPROXY_INCLUDE
+/* Issue a command to a SQL database. Things like Update and
+   Insert are commands.
+   Parameters
+   odbc :     database connection to perform the command on. If
+              NULL uses the default global connection.
+   command :  text string to send to the database to execute.
+   Returns
+   TRUE if the statement succeeds.
+   FALSE if the statement fails. See FetchSQLError.             */
+PSSQL_PROC( int, SQLCommandEx )( PODBC odbc, CTEXTSTR command DBG_PASS);
+#endif
+PSSQL_PROC( int, SQLCommandExx )(PODBC odbc, CTEXTSTR command, size_t commandLen DBG_PASS);
+/* <combine sack::sql::SQLCommandEx@PODBC@CTEXTSTR command>
+   \ \                                                      */
+#define SQLCommand(o,c) SQLCommandEx(o,c DBG_SRC )
+#define SQLCommandLen(o,c,len) SQLCommandExx(o,c,len DBG_SRC )
+   /* Begin collecting insert statements for batch output.
+   Parameters
+   odbc :  database connection to start collecting inserts for */
+PSSQL_PROC( int, SQLInsertBegin )( PODBC odbc );
+/* Generate a SQL insert statement from a variable parameter
+   list.
+   Parameters
+   odbc :   connection to generate an insert on
+   table :  table to insert into
+   args :   a list of fields.
+   Remarks
+   args each column is a set of 3 parameters; the first
+   parameter is the name of the column to insert into, the
+   second is a value 0 or 1 whether to quote the value or not,
+   and a string pointer.
+   Inserts may be batched together and flushed as a whole to the
+   database connection.                                          */
+PSSQL_PROC( int, vSQLInsert )( PODBC odbc, CTEXTSTR table, va_list args );
+/* Generate an insert to the database. Inserts to a single table
+   can be cached internally and flushed.
+   Parameters
+   odbc :   database connection to use
+   table :  name of table to insert into
+   ... :    sets of column paramters.                            */
+PSSQL_PROC( int, SQLInsert )( PODBC odbc, CTEXTSTR table, ... );
+PSSQL_PROC( int, DoSQLInsert )( CTEXTSTR table, ... );
+/* Flushes all cached inserts collected on a database
+   connection.
+   Parameters
+   odbc :  database connection to flush inserts       */
+PSSQL_PROC( int, SQLInsertFlush )( PODBC odbc );
+/* This was the original implementation, it returned the results
+   as a comma separated list, with quotes around results that
+   had commas in them, and quotes around empty strings to
+   distinguish NULL result which is just ',,'.
+   Parameters
+   odbc :     database connection to do the query
+   query :    the string query to do
+   result\ :  address of a CTEXTSTR to get a comma seperated
+              \result of the query in.
+   Returns
+   TRUE if the query succeeded
+   FALSE if the query was in error. See FetchSQLError.
+   Example
+   <code lang="c++">
+   PODBC odbc = NULL; // just use the default connection...
+   CTEXTSTR result;
+   DoSQLQuery( odbc, "select 1,2,3", &amp;result );
+   printf( "result : %s" );
+   </code>
+   \Output
+   <code lang="c++">
+   \result : 1,2,3
+   </code>
+   See Also
+   SQLRecordQuery                                                */
+PSSQL_PROC( int, SQLQueryEx )( PODBC odbc, CTEXTSTR query, CTEXTSTR *result DBG_PASS);
+/* <combine sack::sql::SQLQueryEx@PODBC@CTEXTSTR@CTEXTSTR *result>
+   \ \                                                             */
+#define SQLQuery(o,q,r) SQLQueryEx( o,q,r DBG_SRC )
+/* <combine sack::sql::DoSQLRecordQueryf@int *@CTEXTSTR **@CTEXTSTR **@CTEXTSTR@...>
+   \ \                                                                               */
+PSSQL_PROC( int, SQLRecordQueryEx )( PODBC odbc
+                                   , CTEXTSTR query
+                                   , int *pnResult
+                                   , CTEXTSTR **result
+                                   , CTEXTSTR **fields DBG_PASS);
+/* Do a SQL query on the default odbc connection. The first
+   record results immediately if there are any records. Returns
+   the results as an array of strings. If you know the select
+   you are using .... "select a,b,c from xyz" then you know that
+   this will have 3 columns resulting.
+   Parameters
+   odbc :     connection to do the query on.
+   query :    query to execute.
+   queryLength : actual length of the query (allows embedded NUL characters)
+   PDATALIST* :  pointer to datalist pointer which will contain struct jsox_value_container.
+			 for each result in this list until VALUE_UNDEFINED is used.
+		.name is the field name (constant)
+		.string is the text, value_type is the value type (so numbers can stay numbers)
+	pdlParams : parameters to bind to the query.  (struct json_value_container types)
+   Example
+   See SQLRecordQueryf, but omit the database parameter.         */
+PSSQL_PROC( int, SQLRecordQuery_js )( PODBC odbc
+	, CTEXTSTR query
+	, size_t queryLen
+	, PDATALIST *pdlResults
+	, PDATALIST pdlParams
+	DBG_PASS );
+/* Do a SQL query on the default odbc connection. The first
+   record results immediately if there are any records. Returns
+   the results as an array of strings. If you know the select
+   you are using .... "select a,b,c from xyz" then you know that
+   this will have 3 columns resulting.
+   Parameters
+   odbc :     connection to do the query on.
+   query :    query to execute.
+   queryLength : actual length of the query (allows embedded NUL characters)
+   columns :  pointer to an int to receive the number of columns
+              in the result. (the user will know this based on
+              the query issued usually, so it can be NULL to
+              ignore parameter)
+   result\ :  pointer to a pointer to strings... see example
+   resultLengths : pointer to a size_t* that will contain an array of
+              lengths of the result values.
+   fields :   address of a pointer to strings which will get the
+              field names
+   Example
+   See SQLRecordQueryf, but omit the database parameter.         */
+PSSQL_PROC( int, SQLRecordQuery_v4 )( PODBC odbc
+                                   , CTEXTSTR query
+                                   , size_t queryLength
+                                   , int *pnResult
+                                   , CTEXTSTR **result
+                                   , size_t **resultLengths
+                                   , CTEXTSTR **fields
+                                   , PDATALIST pdlParameters
+                                   DBG_PASS);
+/* <combine sack::sql::SQLRecordQueryEx@PODBC@CTEXTSTR@int *@CTEXTSTR **@CTEXTSTR **fields>
+   \ \                                                                                      */
+#define SQLRecordQuery(o,q,prn,r,f) SQLRecordQueryEx( o,q,prn,r,f DBG_SRC )
+/* <combine sack::sql::SQLRecordQueryExx@PODBC@CTEXTSTR@size_t@int *@CTEXTSTR **@size_t *@CTEXTSTR **fields>
+   \ \                                                                                      */
+#if defined _DEBUG || defined _DEBUG_INFO
+#  define SQLRecordQueryLen(o,q,ql,prn,r,rl,f) SQLRecordQueryExx( o,q,ql,prn,r,rl,f, __FILE__,__LINE__ )
+#  define SQLRecordQueryExx(o,q,ql,ppr,res,reslen,fields ,file,line )  SQLRecordQuery_v4(o,q,ql,ppr,res,reslen,fields,NULL ,file,line )
+#else
+#  define SQLRecordQueryLen(o,q,ql,prn,r,rl,f) SQLRecordQueryExx( o,q,ql,prn,r,rl,f  )
+#  define SQLRecordQueryExx(o,q,ql,ppr,res,reslen,fields )  SQLRecordQuery_v4(o,q,ql,ppr,res,reslen,fields,NULL )
+#endif
+   /* Gets the next result from a query.
+   Parameters
+   odbc :     database connection that the query was executed on
+   result\ :  address of the result variable.
+   Example
+   See SQLRecordQueryf.                                          */
+PSSQL_PROC( int, FetchSQLResult )( PODBC, CTEXTSTR *result );
+/* Gets the next record result from the connection.
+   Parameters
+   odbc :     connection to get the result from; if NULL, uses
+              \internal static connection.
+   result\ :  address of a CTEXTSTR *; to set to an array of
+              CTEXTSTR results.
+   Remarks
+   Values received are invalid after the next FetchSQLRecord or
+   possibly other query.                                        */
+PSSQL_PROC( int, FetchSQLRecord )( PODBC, CTEXTSTR **result );
+/* Gets the next record result from the connection.
+   Parameters
+   odbc :     connection to get the result from; if NULL, uses
+			  \internal static connection.
+   result\ :  (unchanged; is same list as original)
+   Remarks
+   Values received are invalid after the next FetchSQLRecord or
+   possibly other query.                                        */
+PSSQL_PROC( int, FetchSQLRecordJS )(PODBC odbc, PDATALIST *ppdlRecord);
+/* Gets the last result on the specified ODBC connection.
+   Parameters
+   odbc :     connection to get the last error of
+   result\ :  address of a string pointer to receive the error
+              \result.
+   Example
+   <code lang="c++">
+   {
+      CTEXTSTR error;
+      FetchSQLError( NULL, &amp;error );
+   </code>
+   <code>
+      printf( "Error: %s", error );
+   </code>
+   <code lang="c++">
+   }
+   </code>                                                     */
+PSSQL_PROC( int, FetchSQLError )( PODBC, CTEXTSTR *result );
+#ifndef SQLPROXY_INCLUDE
+/* Test if a database connection is open
+   Parameters
+   odbc :  database connection to check
+   Returns
+   TRUE if the connection is open and works.
+   FALSE if the connection would not work because it is not
+   connected.                                               */
+PSSQL_PROC( int, IsSQLOpenEx )( PODBC DBG_PASS );
+/* Test if a database connection is open
+   Parameters
+   odbc :  database connection to check
+   Returns
+   TRUE if the connection is open and works.
+   FALSE if the connection would not work because it is not
+   connected.                                               */
+PSSQL_PROC( int, IsSQLOpen )( PODBC );
+/* <combine sack::sql::IsSQLOpenEx@PODBC>
+   \ \                                    */
+#define IsSQLOpen(odbc) IsSQLOpenEx(odbc DBG_SRC )
+/* An PODBC connection handles commands as a stack, this saves
+   the current query state (that you want to still get results
+   from), so you can start a new query within the outer query.
+   Parameters
+   odbc :  database connection to save the current query state. */
+PSSQL_PROC( int, PushSQLQueryExEx )(PODBC DBG_PASS);
+PSSQL_PROC( int, PushSQLQueryEx )(PODBC);
+/* <combine sack::sql::PushSQLQueryExEx@PODBC>
+   \ \                                         */
+#define PushSQLQueryEx(odbc) PushSQLQueryExEx(odbc DBG_SRC )
+// no application support for username/password, sorry, trust thy odbc layer, please
+PSSQL_PROC( PODBC, ConnectToDatabase )( CTEXTSTR dsn );
+PSSQL_PROC( PODBC, SQLGetODBC )( CTEXTSTR dsn );
+PSSQL_PROC( PODBC, SQLGetODBCEx )( CTEXTSTR dsn, CTEXTSTR user, CTEXTSTR pass );
+PSSQL_PROC( void, SQLDropODBC )( PODBC odbc );
+PSSQL_PROC( void, SQLDropAndCloseODBC )( CTEXTSTR dsn );
+#endif
+// default parameter to require is the global flag RequireConnection from sql.config....
+PSSQL_PROC( PODBC, ConnectToDatabaseExx )( CTEXTSTR DSN, LOGICAL bRequireConnection DBG_PASS );
+PSSQL_PROC( PODBC, ConnectToDatabaseEx )( CTEXTSTR DSN, LOGICAL bRequireConnection );
+#define ConnectToDatabaseEx( dsn, required ) ConnectToDatabaseExx( dsn, required DBG_SRC )
+#define ConnectToDatabase( dsn ) ConnectToDatabaseExx( dsn, FALSE DBG_SRC )
+/* Close a database connection. Releases all resources
+   associated with the odbc connection.
+   Parameters
+   odbc :  connection to database to close. Should not be NULL.  */
+PSSQL_PROC( void, CloseDatabase)(PODBC odbc );
+// does a query responce kinda thing returning types.
+// if( GetSQLTypes() ) while( GetSQLResult( &result ) && result )
+PSSQL_PROC( int, GetSQLTypes )( void );
+/* ODBC only (sqlite no support?). Gets the types of data that
+   the ODBC connection supports.
+   Parameters
+   odbc :  database connection to get the types from.
+   Example
+   <code>
+   PODBC odbc = NULL; // or do a ConnectToDatabsae
+   CTEXTSTR result; // the singular line result
+   if( FetchSQLTypes(odbc) )
+       while( FetchSQLResult( &amp;result ) &amp;&amp; result )
+       {
+           printf( "Supported Type: %s\\n", result );
+       }
+   </code>
+   <code lang="c++">
+   if( GetSQLTypes() )
+       while( GetSQLResult( &amp;result ) &amp;&amp; result )
+   </code>
+   <code>
+       {
+           printf( "Supported Type: %s\\n", result );
+       }
+   </code>                                                      */
+PSSQL_PROC( int, FetchSQLTypes )( PODBC );
+#define PSSQL_VARARG_PROC(a,b,c)  PSSQL_PROC(a,b)c; typedef a(CPROC * __f_##b)c; PSSQL_PROC( __f_##b, __##b )(DBG_VOIDPASS)
+/* Do a SQL query on the default odbc connection. The first
+   record results immediately if there are any records. Returns
+   the results as an array of strings. If you know the select
+   you are using .... "select a,b,c from xyz" then you know that
+   this will have 3 columns resulting.
+   Parameters
+   columns :  pointer to an int to receive the number of columns
+              in the result. (the user will know this based on
+              the query issued usually, so it can be NULL to
+              ignore parameter)
+   result\ :  pointer to a pointer to strings... see example
+   fields :   address of a pointer to strings which will get the
+              field names
+   fmt :      format string as is appropriate for vsnprintf
+   .... :     extra arguments to pass to format string
+   Example
+   See SQLRecordQueryf, but omit the database parameter.         */
+PSSQL_VARARG_PROC( int, DoSQLRecordQueryf ,( int *columns, CTEXTSTR **result, CTEXTSTR **fields, CTEXTSTR fmt, ... ) );
+#define DoSQLRecordQueryf   (__DoSQLRecordQueryf( DBG_VOIDSRC ))
+/* <combine sack::sql::SQLQueryf@PODBC@CTEXTSTR *@CTEXTSTR@...>
+   \ \                                                          */
+PSSQL_VARARG_PROC( int, DoSQLQueryf, ( CTEXTSTR *result, CTEXTSTR fmt, ... ) );
+#define DoSQLQueryf   (__DoSQLQueryf( DBG_VOIDSRC ))
+/* This does a command to the database as a formatted command.
+   This allows the user to simply specify the command and
+   \parameters, and not also maintain a buffer to build the
+   string into before passing the string to the ODBC connection
+   as a command.
+   Parameters
+   fmt :  format string appropriate for vsnprintf. ... \: extra
+          \parameters to fill the format string.
+   See Also
+   SQLCommandf
+   Returns
+   TRUE if command success, else FALSE.
+   if FALSE, can get the error from GetSQLError.
+	*/
+PSSQL_VARARG_PROC( int, DoSQLCommandf, ( CTEXTSTR fmt, ... ) );
+#define DoSQLCommandf   (__DoSQLCommandf( DBG_VOIDSRC ))
+/* Do a SQL query on the default odbc connection. The first
+   record results immediately if there are any records. Returns
+   the results as an array of strings. If you know the select
+   you are using .... "select a,b,c from xyz" then you know that
+   this will have 3 columns resulting.
+   Parameters
+   odbc :     database connection to perform the query on
+   columns :  pointer to an int to receive the number of columns
+              in the result. (the user will know this based on
+              the query issued usually, so it can be NULL to
+              ignore parameter)
+   result\ :  pointer to a pointer to strings... see example
+   fields :   address of a pointer to strings which will get the
+              field names. May be ommited if you don't want to
+              know the names. (is less work internally if this is
+              not built).
+   fmt :      format string as is appropriate for vsnprintf
+   .... :     extra arguments to pass to format string
+   Example
+   <code lang="c++">
+   PODBC odbc = ConnectToDatabase( "MySQL" );
+   CTEXTSTR *results;
+   CTEXTSTR *column_names;
+   int columns;
+   for( SQLRecordQueryf( odbc, &amp;columns, &amp;results, &amp;column_names
+                       , "select a,b,c from %s where %s=%s"
+                       , "table_name"
+                       , "column_name"
+                       , "'value'"
+                       );
+        results;
+        FetchSQLRecord( odbc, &amp;results ) )
+   {
+      int n;
+       // draw a seperator between rows returned
+      printf( " ----- record data ----- \\n" );
+      for( n = 0; n \< columns; n++ )
+      {
+         printf( "Result column '%s' = '%s'\\n", column_name[n], results[n] );
+      }
+   }
+   CloseDatabase( odbc );
+   </code>
+   If the default connection is used, odbc can be NULL in the
+   prior example, or the for staement could be
+   <code>
+   for( DoSQLRecordQueryf( &amp;columns, &amp;results, &amp;column_names
+                         , "select a,b,c from %s where %s=%s"
+                         , "table_name"
+                         , "column_name"
+                         , "'value'"
+                         );
+        results;
+        GetSQLRecord( &amp;results ) )
+   {
+   }
+   </code>                                                                     */
+//PSSQL_PROC( int, SQLRecordQueryf )( PODBC odbc, int *columns, CTEXTSTR **result, CTEXTSTR **fields, CTEXTSTR fmt, ... );
+PSSQL_VARARG_PROC( int, SQLRecordQueryf, ( PODBC odbc, int *columns, CTEXTSTR **result, CTEXTSTR **fields, CTEXTSTR fmt, ... ) );
+#define SQLRecordQueryf   (__SQLRecordQueryf( DBG_VOIDSRC ))
+PSSQL_VARARG_PROC( int, SQLRecordQueryf_v2, ( PODBC odbc, int *nResults, CTEXTSTR **result, size_t **resultLengths, CTEXTSTR **fields, CTEXTSTR fmt, ... ) );
+#define SQLRecordQueryf_v2   (__SQLRecordQueryf_v2( DBG_VOIDSRC ))
+/* This was the original implementation, it returned the results
+   as a comma separated list, with quotes around results that
+   had commas in them, and quotes around empty strings to
+   distinguish NULL result which is just ',,'.
+   Parameters
+   odbc :     database connection to do the query
+   result\ :  address of a CTEXTSTR to get a comma seperated
+              \result of the query in.
+   query :    the string query to do
+   ... :      extra parameters for the query format string
+   Returns
+   TRUE if the query succeeded
+   FALSE if the query was in error. See FetchSQLError.
+   Example
+   <code>
+   PODBC odbc = NULL; // just use the default connection...
+   CTEXTSTR result;
+   DoSQLQueryf( odbc, &amp;result, "select %d,%d,%d", 1, 2, 3 );
+   printf( "result : %s" );
+   </code>
+   \Output
+   <code>
+   \result : 1,2,3
+   </code>
+   See Also
+   SQLRecordQueryf                                               */
+PSSQL_VARARG_PROC( int, SQLQueryf ,( PODBC odbc, CTEXTSTR *result, CTEXTSTR fmt, ... ) );
+#define SQLQueryf   (__SQLQueryf( DBG_VOIDSRC ))
+/* This performs a command on a SQL connection.
+   Parameters
+   odbc :  database connection to do the command on
+   fmt :   format string as appropriate for vsnprintf
+   ... :   extra arguments as required by the format string
+   Returns
+   TRUE if command success, else FALSE.
+   if FALSE, can get the error from FetchSQLError.
+                                                            */
+PSSQL_VARARG_PROC( int, SQLCommandf, ( PODBC odbc, CTEXTSTR fmt, ... ) );
+#define SQLCommandf   (__SQLCommandf( DBG_VOIDSRC ))
+/* Function signature for the callback when the SQL layer can
+   log a status about a database connection (connection,
+   disconnected, failed...) See SQLSetFeedbackHandler.        */
+typedef void (CPROC *HandleSQLFeedback)(CTEXTSTR message);
+// register a feedback message for startup messages
+//  allows external bannering of status... perhaps this can handle failures
+//  and disconnects also...
+PSSQL_PROC( void, SQLSetFeedbackHandler )( HandleSQLFeedback handler );
+/* Parses a CREATE TABLE statement and builds a PTABLE from it.
+   Parameters
+   cmd :         a CREATE TABLE sql command. It is a little
+                 sqlite/mysql centric, and may fail on column
+                 types for SQL Server.
+   writestate :  if writestate is TRUE, a file called
+                 'sparse.txt' will be generated with a C
+                 structure of the Create Table statement passed. This
+                 \file could then be used to copy into code, and
+                 have a code\-static definition instead of going
+                 from the create table statement.
+   Returns
+   a PTABLE which represents the create table statement.              */
+PSSQL_PROC( PTABLE, GetFieldsInSQLEx )( CTEXTSTR cmd, int writestate DBG_PASS );
+/* <combine sack::sql::GetFieldsInSQLEx@CTEXTSTR@int writestate>
+   \ \                                                           */
+#define GetFieldsInSQL(c,w) GetFieldsInSQLEx( c, w DBG_SRC )
+//PSSQL_PROC( PTABLE, GetFieldsInSQL )( CTEXTSTR cmd, int writestate);
+// this is used to destroy the table returned by GetFieldsInSQL
+PSSQL_PROC( void, DestroySQLTable )( PTABLE table );
+// allow setting and getting of a bit of user data associated with the PODBC...
+// though this can result in memory losses at the moment, cause there is no notification
+// that the PODBC has gone away, and that the user needs to remove his data...
+PSSQL_PROC( uintptr_t, SQLGetUserData )( PODBC odbc );
+/* A PODBC may have a user data assigned to it.
+   Parameters
+   odbc :  connection to set the data for; shouldn't be NULL.
+   psv :   user data to assign to the database connection.
+   See Also
+   SQLGetUserData                                             */
+PSSQL_PROC( void, SQLSetUserData )( PODBC odbc, uintptr_t );
+/* Returns a text string GUID, the guid is saved in psersistant text space and will
+   not be released or overwritten.  */
+PSSQL_PROC( CTEXTSTR, GetGUID )( void );
+/* Returns a text string GUID, This uses UuidCreateSequential  */
+PSSQL_PROC( CTEXTSTR, GetSeqGUID )( void );
+/* Returns a text string GUID, the guid is saved in psersistant text space and will
+   not be released or overwritten.  This tring is the constant 0 guid */
+PSSQL_PROC( CTEXTSTR, GuidZero )( void );
+/* convert a string GUID to a binary representation of 16 bytes.
+   litte_endian will byte-swap the grouped portions of numbers in a guid so they can be printed appropriately*/
+PSSQL_PROC( uint8_t*, GetGUIDBinaryEx )( CTEXTSTR guid, LOGICAL litte_endian );
+#define GetGUIDBinary(g) GetGUIDBinaryEx(g, TRUE )
+struct guid_binary {
+	union {
+		struct {
+			uint8_t bytes[16];
+			uint8_t zero[2];
+		} b;
+		struct {
+			uint32_t l1;
+			uint16_t w1;
+			uint16_t w2;
+			uint16_t w3;
+			uint64_t ll1;
+		} d;
+	} u;
+};
+// snprintf( buf, 256, guid_format, guid_param_pass(&guid_binary) )
+// snprintf( buf, 256, guid_format, guid_param_pass(binary_buffer_result) )
+#define guid_format "%08" _32fx "-%04" _16fx "-%04" _16fx "-%04" _16fx "-%012" _64fx
+#define guid_param_pass(n) ((struct guid_binary*)(n))->u.d.l1,((struct guid_binary*)(n))->u.d.w1,((struct guid_binary*)(n))->u.d.w2,((struct guid_binary*)(n))->u.d.w3,((struct guid_binary*)(n))->u.d.ll1
+/* some internal stub-proxy linkage for generating remote
+   responders..
+   This was work in progress for providing a msgsvr service to
+   SQL. One of the implementations of this library was across a
+   windows message queue using ATOM types to transport results
+   and commands. Was going to implement this on the abstract
+   msgqueue interface.                                          */
+typedef struct responce_tag
+{
+	struct {
+		BIT_FIELD bSingleLine : 1;
+		BIT_FIELD bMultiLine : 1;
+		BIT_FIELD bFields : 1;
+	} flags;
+	PVARTEXT result_single_line;
+	int nLines;
+	CTEXTSTR *pLines;
+	CTEXTSTR *pFields;
+} SQL_RESPONCE, *PSQL_RESPONCE;
+/* *WORK IN PROGRESS* function call signature for callback method passed to
+   RegisterResponceHandler.                              */
+typedef void (CPROC *result_responder)( int responce
+									  , PSQL_RESPONCE result );
+/* *WORK IN PROGRESS*
+   result_responder :  callback function to get called with sql
+                       global status messages.
+   See Also
+   <link sack::sql::result_responder, Result Responder Type>    */
+PSSQL_PROC( void, RegisterResponceHandler )( result_responder );
+/* Thread protect means to use critical sections to protect this
+   connection against multiple thread access. Recommended usage
+   is to not use a PODBC with more than one thread in the first
+   place.
+   Parameters
+   odbc :     connection to enable; if null, references the
+              \internal static connection.
+   bEnable :  TRUE to enable, FALSE to disable.                  */
+PSSQL_PROC( void, SetSQLThreadProtect )( PODBC odbc, LOGICAL bEnable );
+/* Enable using 'BEGIN TRANSACTION' and 'COMMIT' commands automatically
+   around commands. If there is a lull of 500ms (1/2 second),
+   then the commit automatically fires. SQLCommit can be called
+   to trigger this process early.
+   Parameters
+   odbc :     connection to set auto transact on
+   bEnable :  TRUE to enable, FALSE to disable.                         */
+PSSQL_PROC( void, SetSQLAutoTransact )( PODBC odbc, LOGICAL bEnable );
+/* Enable using 'BEGIN TRANSACTION' and 'COMMIT' commands automatically
+   around commands. If there is a lull of 500ms (1/2 second),
+   then the commit automatically fires. SQLCommit can be called
+	to trigger this process early.
+	if Callback is set, automatically enables AutoTransact
+   if Callback is NULL, automatically clears AutoTransact
+   Parameters
+   odbc :     connection to set auto transact on
+   callback :  not NULL to enable, NULL to disable.                         */
+PSSQL_PROC( void, SetSQLAutoTransactCallback )( PODBC odbc, void (CPROC*callback)(uintptr_t,PODBC), uintptr_t psv );
+/* Relevant for SQLite databases. After a certain period of
+   inactivity the database is closed (allowing the file to be
+   not-in-use during idle). PODBC odject remains valid, and
+   connection to database is re-enabled on next usage.
+   Parameters
+   odbc :     connection to enable auto close behavior on
+   bEnable :  TRUE to enable auto close FALSE to disable.     */
+PSSQL_PROC( void, SetSQLAutoClose )( PODBC odbc, LOGICAL bEnable );
+/* Relevant for SQLite databases. After a certain period of
+   inactivity the database is issued a PRAGMA wal_checkpoint
+   Parameters
+   odbc :     connection to enable auto checkpoint behavior on
+   bEnable :  TRUE to enable auto checkpoint FALSE to disable.     */
+PSSQL_PROC( void, SetSQLAutoCheckpoint )( PODBC odbc, LOGICAL bEnable );
+/* returns the current value of auto checkpoint mode on a conneciton
+   Parameters
+   odbc :     connection to enable auto checkpoint behavior on */
+PSSQL_PROC( LOGICAL, GetSQLAutoCheckpoint )( PODBC odbc );
+/* A function to apply a time offset for fiscal time
+   calculations; sometimes the day doesn't end at midnight, but
+   a shift might last until 5 in the morning.
+   Parameters
+   odbc :            connection to get the appropriate SQL
+                     expression for
+   BeginOfDayType :  name of the type of beginning of the day
+   default_begin :   the default time when a day begins.
+   Note
+   default_begin is a format sort of like a time. If this is a
+   simple integer 5 then it's 5:00am, if it's more than 100,
+   then it's assumed to be hours and minutes so 530 would be
+   5:30 in the monring. this is also stored in the option
+   databse, so the default value can be overridden; if the SQL
+   value has a ':' in it then it is parsed as hours and minutes.
+   Negative time may be used to indicate that the day begins
+   before the day ends (-2 would be day end at 10pm).            */
+PSSQL_PROC( CTEXTSTR, GetSQLOffsetDate )( PODBC odbc, CTEXTSTR BeginOfDayType, int default_begin );
+/* Performs a low level backup of one database to another.  This API supports
+   sqlite3 connections ONLY.
+   Parameters
+   source :            original database to copy from
+   dest :    database to copy to
+   */
+PSSQL_PROC( LOGICAL, BackupDatabase )( PODBC source, PODBC dest );
+/* return the underlaying native connection handle of the database connection
+ */
+// deprecated during dev, instead added function hook exports
+//PSSQL_PROC( POINTER, GetODBCHandle )( PODBC odbc );
+/* set a handler to be triggered when SQLite Database finds corruption type error...
+ */
+PSSQL_PROC( void, SetSQLCorruptionHandler )( PODBC odbc, void (CPROC*f)(uintptr_t psv, PODBC odbc), uintptr_t psv );
+/* Utility function to parse DSN according to sack sqlite vfs rules... */
+PSSQL_PROC( void, ParseDSN )( CTEXTSTR dsn, char **vfs, char **vfsInfo, char **dbFile );
+#if defined( USE_SQLITE ) || defined( USE_SQLITE_INTERFACE )
+#ifdef __cplusplus
+SQL_NAMESPACE_END
+#endif
+struct sqlite3_value;
+struct sqlite3_context;
+#ifdef __cplusplus
+SQL_NAMESPACE
+#endif
+PSSQL_PROC( int, PSSQL_AddSqliteFunction )( PODBC odbc
+	, const char *name
+	, void( *callUserFunction )( struct sqlite3_context*onwhat, int argc, struct sqlite3_value**argv )
+	, void( *callUserDestroy )( void * )
+	, int args
+	, void *userData );
+PSSQL_PROC( int, PSSQL_AddSqliteProcedure )( PODBC odbc
+	, const char *name
+	, void( *callUserFunction )( struct sqlite3_context*onwhat, int argc, struct sqlite3_value**argv )
+	, void( *callUserDestroy )( void * )
+	, int args
+	, void *userData );
+PSSQL_PROC( int, PSSQL_AddSqliteAggregate )( PODBC odbc
+	, const char *name
+	, void( *callStep )( struct sqlite3_context*onwhat, int argc, struct sqlite3_value**argv )
+	, void( *callFinal )( struct sqlite3_context*onwhat )
+	, void( *callUserDestroy )( void * )
+	, int args
+	, void *userData );
+PSSQL_PROC( POINTER, PSSQL_GetSqliteFunctionData )( struct sqlite3_context*context );
+PSSQL_PROC( void, PSSQL_ResultSqliteText )( struct sqlite3_context*context, const char *data, int dataLen, void (*done)(void*) );
+PSSQL_PROC( void, PSSQL_ResultSqliteBlob )( struct sqlite3_context*context, const char *data, int dataLen, void (*done)(void*) );
+PSSQL_PROC( void, PSSQL_ResultSqliteDouble )( struct sqlite3_context*context, double val );
+PSSQL_PROC( void, PSSQL_ResultSqliteInt )( struct sqlite3_context*context, int val );
+PSSQL_PROC( void, PSSQL_ResultSqliteInt64 )( struct sqlite3_context*context, int64_t val );
+PSSQL_PROC( void, PSSQL_ResultSqliteNull )( struct sqlite3_context*context );
+enum sqlite_data_types {
+	PSSQL_TYPE_INTEGER= 1,
+	PSSQL_TYPE_FLOAT= 2,
+	PSSQL_TYPE_TEXT = 3,
+	PSSQL_TYPE_BLOB  = 4,
+	PSSQL_TYPE_NULL = 5,
+};
+PSSQL_PROC( enum sqlite_data_types, PSSQL_GetSqliteValueType )( struct sqlite3_value *val );
+PSSQL_PROC( void, PSSQL_GetSqliteValueText )( struct sqlite3_value *val, const char **text, int *textLen );
+PSSQL_PROC( void, PSSQL_GetSqliteValueBlob )( struct sqlite3_value *val, const char **text, int *textLen );
+PSSQL_PROC( void, PSSQL_GetSqliteValueDouble )( struct sqlite3_value *val, double *result );
+PSSQL_PROC( void, PSSQL_GetSqliteValueInt )( struct sqlite3_value *val, int *result );
+PSSQL_PROC( void, PSSQL_GetSqliteValueInt64 )( struct sqlite3_value *val, int64_t *result );
+PSSQL_PROC( const char *, PSSQL_GetColumnTableName )( PODBC odbc, int col );
+PSSQL_PROC( const char *, PSSQL_GetColumnTableAliasName )( PODBC odbc, int col );
+PSSQL_PROC( void, PSSQL_GetSqliteValue )( struct sqlite3_value *val, const char **text, int *textLen );
+#endif
+SQL_NAMESPACE_END
+#ifdef __cplusplus
+	using namespace sack::sql;
+#endif
+#endif
+#if 0
+#endif
+#ifndef SQL_OPTIONS_DEFINED
+#define SQL_OPTIONS_DEFINED
+// sqloptint.h leaves namespace open.
+// these headers should really be collapsed.
+#ifndef SQL_GET_OPTION_DEFINED
+#define SQL_GET_OPTION_DEFINED
+#ifdef __cplusplus
+#define _OPTION_NAMESPACE namespace options {
+#define _OPTION_NAMESPACE_END }
+#define USE_OPTION_NAMESPACE	 using namespace sack::sql::options;
+#else
+#define _OPTION_NAMESPACE
+#define _OPTION_NAMESPACE_END
+#define USE_OPTION_NAMESPACE
+#endif
+SACK_NAMESPACE
+   _SQL_NAMESPACE
+	/* Contains methods for saving and recovering options from a
+	   database. If enabled, will use a local option.db sqlite
+	   database. Use EditOptions application to modify options. Can
+	   use any database connection, but sql.config file will specify
+	   'option.db' to start.                                         */
+	_OPTION_NAMESPACE
+#define SACK_OPTION_NAMESPACE SACK_NAMESPACE _SQL_NAMESPACE _OPTION_NAMESPACE
+#define SACK_OPTION_NAMESPACE_END _OPTION_NAMESPACE_END _SQL_NAMESPACE_END SACK_NAMESPACE_END
+#ifdef SQLGETOPTION_SOURCE
+#define SQLGETOPTION_PROC(type,name) EXPORT_METHOD type CPROC name
+#else
+#define SQLGETOPTION_PROC(type,name) IMPORT_METHOD type CPROC name
+#endif
+#ifndef __NO_INTERFACES__
+   _INTERFACE_NAMESPACE
+/* Defines a set of functions that can be registered as an
+   interface, and the interface can be used for saving options. Module
+   ideas might be to save into the windows registry system or
+   into INI files.                                                     */
+typedef struct option_interface_tag
+{
+   // these provide simple section, key, value queries.
+	METHOD_PTR( size_t, GetPrivateProfileString )( CTEXTSTR pSection, CTEXTSTR pOptname, CTEXTSTR pDefaultbuf, TEXTSTR pBuffer, size_t nBuffer, CTEXTSTR pININame );
+	METHOD_PTR( int32_t, GetPrivateProfileInt )( CTEXTSTR pSection, CTEXTSTR pOptname, int32_t nDefault, CTEXTSTR pININame );
+	METHOD_PTR( size_t, GetProfileString )( CTEXTSTR pSection, CTEXTSTR pOptname, CTEXTSTR pDefaultbuf, TEXTSTR pBuffer, size_t nBuffer );
+	METHOD_PTR( int32_t, GetProfileInt )( CTEXTSTR pSection, CTEXTSTR pOptname, int32_t defaultval );
+   // these provide an additional level of abstraction - the ini file
+	METHOD_PTR( LOGICAL, WritePrivateProfileString )( CTEXTSTR pSection, CTEXTSTR pName, CTEXTSTR pValue, CTEXTSTR pINIFile );
+	METHOD_PTR( int32_t, WritePrivateProfileInt )( CTEXTSTR pSection, CTEXTSTR pName, int32_t value, CTEXTSTR pINIFile );
+	METHOD_PTR( LOGICAL, WriteProfileString )( CTEXTSTR pSection, CTEXTSTR pName, CTEXTSTR pValue );
+	METHOD_PTR( int32_t, WriteProfileInt )( CTEXTSTR pSection, CTEXTSTR pName, int32_t value );
+   // these offer(expose) the option to be quiet
+	METHOD_PTR( size_t, GetPrivateProfileStringEx )( CTEXTSTR pSection, CTEXTSTR pOptname, CTEXTSTR pDefaultbuf, TEXTSTR pBuffer, size_t nBuffer, CTEXTSTR pININame, LOGICAL bQuiet );
+	METHOD_PTR( int32_t, GetPrivateProfileIntEx )( CTEXTSTR pSection, CTEXTSTR pOptname, int32_t nDefault, CTEXTSTR pININame, LOGICAL bQuiet );
+	METHOD_PTR( size_t, GetProfileStringEx )( CTEXTSTR pSection, CTEXTSTR pOptname, CTEXTSTR pDefaultbuf, TEXTSTR pBuffer, size_t nBuffer, LOGICAL bQuiet );
+	METHOD_PTR( int32_t, GetProfileIntEx )( CTEXTSTR pSection, CTEXTSTR pOptname, int32_t defaultval, LOGICAL bQuiet );
+	METHOD_PTR( LOGICAL, WriteProfileStringEx )( CTEXTSTR pSection, CTEXTSTR pName, CTEXTSTR pValue, CTEXTSTR pINIFile, LOGICAL flush );
+	METHOD_PTR( LOGICAL, WritePrivateProfileStringEx )( CTEXTSTR pSection, CTEXTSTR pName, CTEXTSTR pValue, CTEXTSTR pINIFile, LOGICAL commit );
+} *POPTION_INTERFACE;
+#define GetOptionInterface() ((POPTION_INTERFACE)GetInterface( "options" ))
+//POPTION_INTERFACE GetOptionInterface( void );
+//void DropOptionInterface( POPTION_INTERFACE );
+#ifndef DEFAULT_OPTION_INTERFACE
+#define DEFAULT_OPTION_INTERFACE ((!pOptionInterface)?(pOptionInterface=GetOptionInterface()):pOptionInterface)
+#ifdef USES_OPTION_INTERFACE
+static POPTION_INTERFACE pOptionInterface;
+#ifdef __WATCOMC__
+static void UseInterface( void )
+{
+	// use the value of this function and set pOptionInterface with it
+	// makes pOptionInterface marked as used so is UseInterface.
+	// Visual Studio pucked on this because converting a function pointer to data pointer
+   // but this function should never be called.
+   pOptionInterface = (POPTION_INTERFACE)UseInterface;
+}
+#endif
+#endif
+#endif
+   _INTERFACE_NAMESPACE_END
+#ifdef __cplusplus
+using namespace sack::sql::options::Interface;
+#endif
+#endif
+#define OptGetPrivateProfileString   METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),GetPrivateProfileString)
+#define OptGetPrivateProfileInt      METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),GetPrivateProfileInt)
+#define OptGetProfileString          METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),GetProfileString)
+#define OptGetProfileInt             METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),GetProfileInt)
+#define OptWritePrivateProfileString METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),WritePrivateProfileString)
+#define OptWritePrivateProfileInt    METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),WritePrivateProfileInt)
+#define OptWriteProfileString        METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),WriteProfileString)
+#define OptWriteProfileInt           METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),WriteProfileInt)
+#define OptGetPrivateProfileStringEx   METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),GetPrivateProfileStringEx)
+#define OptGetPrivateProfileIntEx      METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),GetPrivateProfileIntEx)
+#define OptGetProfileStringEx          METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),GetProfileStringEx)
+#define OptGetProfileIntEx             METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),GetProfileIntEx)
+#define OptWritePrivateProfileStringEx     METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),WritePrivateProfileStringEx)
+#define OptWriteProfileStringEx     METHOD_ALIAS((DEFAULT_OPTION_INTERFACE),WriteProfileStringEx)
+SACK_OPTION_NAMESPACE_END
+#endif
+SACK_OPTION_NAMESPACE
+typedef struct sack_option_tree_family_node *POPTION_TREE_NODE;
+typedef struct sack_option_tree_family *POPTION_TREE;
+/* <combine sack::sql::options::SACK_GetPrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@TEXTCHAR *@size_t@CTEXTSTR@LOGICAL>
+   \ \                                                                                                                        */
+SQLGETOPTION_PROC( size_t, SACK_GetPrivateProfileString )( CTEXTSTR pSection, CTEXTSTR pOptname, CTEXTSTR pDefaultbuf, TEXTCHAR *pBuffer, size_t nBuffer, CTEXTSTR pININame );
+/* <combine sack::sql::options::SACK_GetPrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@TEXTCHAR *@size_t@CTEXTSTR@LOGICAL>
+   \ \                                                                                                                        */
+SQLGETOPTION_PROC( int32_t, SACK_GetPrivateProfileInt )( CTEXTSTR pSection, CTEXTSTR pOptname, int32_t nDefault, CTEXTSTR pININame );
+/* <combine sack::sql::options::SACK_GetPrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@TEXTCHAR *@size_t@CTEXTSTR@LOGICAL>
+   \ \                                                                                                                        */
+SQLGETOPTION_PROC( size_t, SACK_GetProfileString )( CTEXTSTR pSection, CTEXTSTR pOptname, CTEXTSTR pDefaultbuf, TEXTCHAR *pBuffer, size_t nBuffer );
+/* <combine sack::sql::options::SACK_GetPrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@TEXTCHAR *@size_t@CTEXTSTR@LOGICAL>
+   \ \                                                                                                                        */
+SQLGETOPTION_PROC( int, SACK_GetProfileBlob )( CTEXTSTR pSection, CTEXTSTR pOptname, TEXTCHAR **pBuffer, size_t *pnBuffer );
+/* <combine sack::sql::options::SACK_GetPrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@TEXTCHAR *@size_t@CTEXTSTR@LOGICAL>
+   \ \                                                                                                                        */
+SQLGETOPTION_PROC( int, SACK_GetProfileBlobOdbc )( PODBC odbc, CTEXTSTR pSection, CTEXTSTR pOptname, TEXTCHAR **pBuffer, size_t *pnBuffer );
+/* <combine sack::sql::options::SACK_GetPrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@TEXTCHAR *@size_t@CTEXTSTR@LOGICAL>
+   \ \                                                                                                                        */
+SQLGETOPTION_PROC( int32_t, SACK_GetProfileInt )( CTEXTSTR pSection, CTEXTSTR pOptname, int32_t defaultval );
+/* All gets eventually end up here. This function gets a value
+   from a database. Functions which return an 'int' use this
+   function, but has extra processing to convert the text into a
+   number; also if the text is 'Y', or 'y' then the option's int
+   value is 1.
+   Parameters
+   pSection :     Path of the option to retrieve.
+   pOptname :     Actual option name to retrieve.
+   pDefaultbuf :  Default value if the option doesn't exist
+                  already.
+   pBuffer :      Pointer to the buffer to get the result
+   nBuffer :      size of the result buffer in characters (not
+                  bytes).
+   pININame :     This is the upper level name. If a function
+                  does not have a pININame, then the name
+                  "DEFAULT' is used. (pass NULL here for
+                  non\-private)
+   bQuiet :       Boolean, if configured to prompt the user for
+                  option values, this overrides the default to
+                  disable prompting.                             */
+SQLGETOPTION_PROC( size_t, SACK_GetPrivateProfileStringEx )( CTEXTSTR pSection, CTEXTSTR pOptname, CTEXTSTR pDefaultbuf, TEXTCHAR *pBuffer, size_t nBuffer, CTEXTSTR pININame, LOGICAL bQuiet );
+SQLGETOPTION_PROC( LOGICAL, SACK_WritePrivateOptionStringEx )(PODBC odbc, CTEXTSTR pSection, CTEXTSTR pName, CTEXTSTR pValue, CTEXTSTR pINIFile, LOGICAL flush);
+/* <combine sack::sql::options::SACK_GetPrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@TEXTCHAR *@size_t@CTEXTSTR@LOGICAL>
+   \ \                                                                                                                        */
+SQLGETOPTION_PROC( int32_t, SACK_GetPrivateProfileIntEx )( CTEXTSTR pSection, CTEXTSTR pOptname, int32_t nDefault, CTEXTSTR pININame, LOGICAL bQuiet );
+/* <combine sack::sql::options::SACK_GetPrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@TEXTCHAR *@size_t@CTEXTSTR@LOGICAL>
+   \ \                                                                                                                        */
+SQLGETOPTION_PROC( size_t, SACK_GetProfileStringEx )( CTEXTSTR pSection, CTEXTSTR pOptname, CTEXTSTR pDefaultbuf, TEXTCHAR *pBuffer, size_t nBuffer, LOGICAL bQuiet );
+/* <combine sack::sql::options::SACK_GetPrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@TEXTCHAR *@size_t@CTEXTSTR@LOGICAL>
+   \ \                                                                                                                        */
+SQLGETOPTION_PROC( int32_t, SACK_GetProfileIntEx )( CTEXTSTR pSection, CTEXTSTR pOptname, int32_t defaultval, LOGICAL bQuiet );
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( int32_t, SACK_WritePrivateProfileIntEx )( CTEXTSTR pSection, CTEXTSTR pName, int32_t value, CTEXTSTR pINIFile, LOGICAL bQuiet );
+SQLGETOPTION_PROC( LOGICAL, SACK_WritePrivateProfileStringEx )( CTEXTSTR pSection, CTEXTSTR pName, CTEXTSTR pValue, CTEXTSTR pINIFile, LOGICAL bFlush );
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( LOGICAL, SACK_WriteProfileStringEx )( CTEXTSTR pSection, CTEXTSTR pName, CTEXTSTR pValue, CTEXTSTR pINIfile, LOGICAL flush );
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( int32_t, SACK_WriteProfileIntEx )( CTEXTSTR pSection, CTEXTSTR pName, int32_t value, LOGICAL bQuiet );
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( LOGICAL, SACK_WritePrivateProfileString )( CTEXTSTR pSection, CTEXTSTR pName, CTEXTSTR pValue, CTEXTSTR pINIFile );
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( int32_t, SACK_WritePrivateProfileInt )( CTEXTSTR pSection, CTEXTSTR pName, int32_t value, CTEXTSTR pINIFile );
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( LOGICAL, SACK_WriteProfileString )( CTEXTSTR pSection, CTEXTSTR pName, CTEXTSTR pValue );
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( LOGICAL, SACK_WriteOptionString )( PODBC odbc, CTEXTSTR pSection, CTEXTSTR pName, CTEXTSTR pValue );
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( int, SACK_WriteProfileBlob )( CTEXTSTR pSection, CTEXTSTR pOptname, TEXTCHAR *pBuffer, size_t nBuffer );
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( int, SACK_WriteProfileBlobOdbc )( PODBC odbc, CTEXTSTR pSection, CTEXTSTR pOptname, TEXTCHAR *pBuffer, size_t nBuffer );
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   returns boolean true/false whether the write worked or not.
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( int, SACK_WritePrivateProfileBlob )( CTEXTSTR pSection, CTEXTSTR pOptname, TEXTCHAR *pBuffer, size_t nBuffer, CTEXTSTR app );
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   returns boolean true/false whether the write worked or not.
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( int, SACK_WritePrivateProfileBlobOdbc )( PODBC odbc, CTEXTSTR pSection, CTEXTSTR pOptname, TEXTCHAR *pBuffer, size_t nBuffer,  CTEXTSTR app);
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   returns boolean true/false whether the write worked or not.
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( int32_t, SACK_WriteProfileInt )( CTEXTSTR pSection, CTEXTSTR pName, int32_t value );
+/* <combinewith sack::sql::options::SACK_WritePrivateProfileStringEx@CTEXTSTR@CTEXTSTR@CTEXTSTR@CTEXTSTR@LOGICAL>
+   \ \                                                                                                            */
+SQLGETOPTION_PROC( size_t, SACK_GetPrivateProfileStringExxx )( PODBC odbc
+																				, CTEXTSTR pSection
+																				, CTEXTSTR pOptname
+																				, CTEXTSTR pDefaultbuf
+																				, TEXTCHAR *pBuffer
+																				, size_t nBuffer
+																				, CTEXTSTR pININame
+																				, LOGICAL bQuiet
+																				 DBG_PASS
+																				);
+#ifdef __NO_OPTIONS__
+#define SACK_GetProfileInt( s,e,d ) (d)
+#define SACK_GetProfileString( s,e,d,b,n ) ((d)?StrCpyEx( b,d,n ):0)
+#endif
+#define SACK_GetPrivateOptionString( odbc, section, option, default_buf, buf, buf_size, ini_name )	   SACK_GetPrivateProfileStringExxx( odbc, section, option, default_buf, buf, buf_size, ini_name, FALSE DBG_SRC )
+#define SACK_GetPrivateOptionStringEx( odbc, section, option, default_buf, buf, buf_size, ini_name, quiet )      SACK_GetPrivateProfileStringExxx( odbc, section, option, default_buf, buf, buf_size, ini_name, quiet DBG_SRC )
+#define SACK_GetOptionString( odbc, section, option, default_buf, buf, buf_size )      SACK_GetPrivateProfileStringExxx( odbc, section, option, default_buf, buf, buf_size, NULL, FALSE DBG_SRC )
+#define SACK_GetOptionStringEx( odbc, section, option, default_buf, buf, buf_size, quiet )      SACK_GetPrivateProfileStringExxx( odbc, section, option, default_buf, buf, buf_size, NULL, quiet DBG_SRC )
+SQLGETOPTION_PROC( int32_t, SACK_GetPrivateProfileIntExx )( PODBC odbc, CTEXTSTR pSection, CTEXTSTR pOptname, int32_t nDefault, CTEXTSTR pININame, LOGICAL bQuiet DBG_PASS );
+#define SACK_GetPrivateOptionInt( odbc, section, option, default_val, ini_name )	   SACK_GetPrivateProfileIntExx( odbc, section, option, default_val, ini_name, FALSE DBG_SRC )
+#define SACK_GetPrivateOptionIntEx( odbc, section, option, default_val, ini_name, quiet )      SACK_GetPrivateProfileIntExx( odbc, section, option, default_val, ini_name, quiet DBG_SRC )
+#define SACK_GetOptionInt( odbc, section, option, default_val )      SACK_GetPrivateProfileIntExx( odbc, section, option, default_val, NULL, FALSE DBG_SRC )
+#define SACK_GetOptionIntEx( odbc, section, option, default_val, quiet )      SACK_GetPrivateProfileIntExx( odbc, section, option, default_val, NULL, quiet DBG_SRC )
+SQLGETOPTION_PROC( CTEXTSTR, GetSystemID )( void );
+SQLGETOPTION_PROC( void, EnumOptions )( POPTION_TREE_NODE parent
+					 , int (CPROC *Process)(uintptr_t psv, CTEXTSTR name, POPTION_TREE_NODE ID, int flags )
+                , uintptr_t psvUser );
+SQLGETOPTION_PROC( void, EnumOptionsEx )( PODBC odbc, POPTION_TREE_NODE parent
+					 , int (CPROC *Process)(uintptr_t psv, CTEXTSTR name, POPTION_TREE_NODE ID, int flags )
+                , uintptr_t psvUser );
+SQLGETOPTION_PROC( POPTION_TREE, GetOptionTreeExxx )( PODBC odbc, PFAMILYTREE existing_tree DBG_PASS );
+/* Sets the option database to use (does not prevent
+   preload/deadstart code from using the old database) but this
+   can be used for comparison utilities.
+   Parameters
+   odbc :  The PODBC connection to use.
+   See Also
+   PODBC                                                        */
+SQLGETOPTION_PROC( POPTION_TREE, SetOptionDatabase )( PODBC odbc );
+SQLGETOPTION_PROC( CTEXTSTR, GetDefaultOptionDatabaseDSN )( void );
+SQLGETOPTION_PROC( void, SetOptionDatabaseOption )( PODBC odbc );
+SQLGETOPTION_PROC( void, BeginBatchUpdate )( void );
+SQLGETOPTION_PROC( void, EndBatchUpdate )( void );
+SQLGETOPTION_PROC( POPTION_TREE_NODE, GetOptionIndexEx )( POPTION_TREE_NODE parent, const TEXTCHAR *file, const TEXTCHAR *pBranch, const TEXTCHAR *pValue, int bCreate, int bBypassParsing DBG_PASS );
+SQLGETOPTION_PROC( POPTION_TREE_NODE, GetOptionIndexExx )( PODBC odbc, POPTION_TREE_NODE parent, CTEXTSTR program, const TEXTCHAR *file, const TEXTCHAR *pBranch, const TEXTCHAR *pValue, int bCreate, int bBypassParsing DBG_PASS );
+#define GetOptionIndex(p,f,b,v) GetOptionIndexEx( p,f,b,v,FALSE,FALSE DBG_SRC )
+SQLGETOPTION_PROC( size_t, GetOptionStringValueEx )( PODBC odbc, POPTION_TREE_NODE optval, TEXTCHAR **buffer, size_t *len DBG_PASS );
+SQLGETOPTION_PROC( void,SetOptionStringValueEx )( PODBC odbc, POPTION_TREE_NODE node, CTEXTSTR value );
+SQLGETOPTION_PROC( size_t, GetOptionStringValue )( POPTION_TREE_NODE optval, TEXTCHAR **buffer, size_t *len );
+SQLGETOPTION_PROC( LOGICAL, SetOptionStringValue )( POPTION_TREE tree, POPTION_TREE_NODE optval, CTEXTSTR pValue );
+SQLGETOPTION_PROC( void, DeleteOption )( POPTION_TREE_NODE iRoot );
+SQLGETOPTION_PROC( void, DuplicateOption )( POPTION_TREE_NODE iRoot, CTEXTSTR pNewName );
+ // flush the map cache.
+SQLGETOPTION_PROC( void, ResetOptionMap )( PODBC odbc );
+SQLGETOPTION_PROC( PODBC, GetOptionODBCEx )( CTEXTSTR dsn DBG_PASS );
+SQLGETOPTION_PROC( void, DropOptionODBCEx )( PODBC odbc DBG_PASS );
+SQLGETOPTION_PROC( PODBC, GetOptionODBC )( CTEXTSTR dsn );
+SQLGETOPTION_PROC( void, DropOptionODBC )( PODBC odbc );
+#define GetOptionODBC( b) GetOptionODBCEx( b DBG_SRC )
+#define DropOptionODBC(a) DropOptionODBCEx( a DBG_SRC )
+SQLGETOPTION_PROC( void, FindOptions )( PODBC odbc, PLIST *result_list, CTEXTSTR name );
+_OPTION_NAMESPACE_END _SQL_NAMESPACE_END SACK_NAMESPACE_END
+	USE_OPTION_NAMESPACE
+#endif
+/* MD5.H - header file for MD5C.C
+ */
+/* Copyright (C) 1991-2, RSA Data Security, Inc. Created 1991. All
+rights reserved.
+License to copy and use this software is granted provided that it
+is identified as the "RSA Data Security, Inc. MD5 Message-Digest
+Algorithm" in all material mentioning or referencing this software
+or this function.
+License is also granted to make and use derivative works provided
+that such works are identified as "derived from the RSA Data
+Security, Inc. MD5 Message-Digest Algorithm" in all material
+mentioning or referencing the derived work.
+RSA Data Security, Inc. makes no representations concerning either
+the merchantability of this software or the suitability of this
+software for any particular purpose. It is provided "as is"
+without express or implied warranty of any kind.
+These notices must be retained in any copies of any part of this
+documentation and/or software.
+ */
+#ifndef MD5_ALGORITHM_DEFINED
+#define MD5_ALGORITHM_DEFINED
+#ifdef MD5_SOURCE
+#define MD5_PROC(type,name) EXPORT_METHOD type name
+#else
+#define MD5_PROC(type,name) IMPORT_METHOD type name
+#endif
+/* MD5 context. */
+typedef struct {
+	uint32_t state[4];
+	uint32_t count[2];
+  unsigned char buffer[64];
+} MD5_CTX;
+MD5_PROC( void, MD5Init )(MD5_CTX *);
+MD5_PROC( void, MD5Update )(MD5_CTX *, unsigned char *, unsigned int);
+MD5_PROC( void, MD5Final )(unsigned char [16], MD5_CTX *);
+#endif
+/*
+ *  sha1.h
+ *
+ *  Description:
+ *      This is the header file for code which implements the Secure
+ *      Hashing Algorithm 1 as defined in FIPS PUB 180-1 published
+ *      April 17, 1995.
+ *
+ *      Many of the variable names in this code, especially the
+ *      single character names, were used because those were the names
+ *      used in the publication.
+ *
+ *      Please read the file sha1.c for more information.
+ *
+ */
+#ifndef INCLUDED_SHA1_H_
+#define INCLUDED_SHA1_H_
+#ifdef SHA1_SOURCE
+#define SHA1_PROC(type,name) EXPORT_METHOD type CPROC name
+#else
+#define SHA1_PROC(type,name) IMPORT_METHOD type CPROC name
+#endif
+#if !defined(  HAS_STDINT )
+#ifndef __WATCOMC__
+	typedef unsigned long uint32_t;
+	typedef short int_least16_t;
+	typedef unsigned char uint8_t;
+#else
+#endif
+//typedef unsigned char uint8_t;
+//typedef int int_least16_t;
+#endif
+/*
+ * If you do not have the ISO standard stdint.h header file, then you
+ * must typdef the following:
+ *    name              meaning
+ *  uint32_t         unsigned 32 bit integer
+ *  uint8_t          unsigned 8 bit integer (i.e., unsigned char)
+ *  int_least16_t    integer of >= 16 bits
+ *
+ */
+#ifndef _SHA_enum_
+#define _SHA_enum_
+enum
+{
+    shaSuccess = 0,
+    shaNull,
+    shaInputTooLong,
+    shaStateError
+};
+#endif
+#define SHA1HashSize 20
+/*
+ *  This structure will hold context information for the SHA-1
+ *  hashing operation
+ */
+typedef struct SHA1Context
+{
+    uint32_t Intermediate_Hash[SHA1HashSize/4];
+    uint32_t Length_Low;
+    uint32_t Length_High;
+                               /* Index into message block array   */
+    int_least16_t Message_Block_Index;
+    uint8_t Message_Block[64];
+    int Computed;
+    int Corrupted;
+} SHA1Context;
+/*
+ *  Function Prototypes
+ */
+SHA1_PROC( int, SHA1Reset )(  SHA1Context *);
+SHA1_PROC( int, SHA1Input )(  SHA1Context *,
+                const uint8_t *,
+                size_t);
+SHA1_PROC( int, SHA1Result )( SHA1Context *,
+                uint8_t Message_Digest[SHA1HashSize]);
+#endif
+// $Log: $
+/*
+ * FIPS 180-2 SHA-224/256/384/512 implementation
+ * Last update: 02/02/2007
+ * Issue date:  04/30/2005
+ *
+ * Copyright (C) 2005, 2007 Olivier Gay <olivier.gay@a3.epfl.ch>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the project nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE PROJECT OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+#ifndef SHA2_H
+#define SHA2_H
+#ifdef SHA2_SOURCE
+#define SHA2_PROC   EXPORT_METHOD
+#else
+#define SHA2_PROC   IMPORT_METHOD
+#endif
+#define SHA224_DIGEST_SIZE ( 224 / 8)
+#define SHA256_DIGEST_SIZE ( 256 / 8)
+#define SHA384_DIGEST_SIZE ( 384 / 8)
+#define SHA512_DIGEST_SIZE ( 512 / 8)
+#define SHA256_BLOCK_SIZE  ( 512 / 8)
+#define SHA512_BLOCK_SIZE  (1024 / 8)
+#define SHA384_BLOCK_SIZE  SHA512_BLOCK_SIZE
+#define SHA224_BLOCK_SIZE  SHA256_BLOCK_SIZE
+#ifndef SHA2_TYPES
+#define SHA2_TYPES
+typedef unsigned char uint8;
+typedef unsigned int  uint32;
+typedef unsigned long long uint64;
+#endif
+#ifdef __cplusplus
+extern "C" {
+#endif
+typedef struct {
+    unsigned int tot_len;
+    unsigned int len;
+    unsigned char block[2 * SHA256_BLOCK_SIZE];
+    uint32 h[8];
+}sha256_ctx;
+typedef struct {
+    unsigned int tot_len;
+    unsigned int len;
+    unsigned char block[2 * SHA512_BLOCK_SIZE];
+    uint64 h[8];
+}sha512_ctx;
+typedef sha512_ctx sha384_ctx;
+typedef sha256_ctx sha224_ctx;
+SHA2_PROC void sha224_init(sha224_ctx *ctx);
+SHA2_PROC void sha224_update(sha224_ctx *ctx, const unsigned char *message,
+                   unsigned int len);
+SHA2_PROC void sha224_final(sha224_ctx *ctx, unsigned char *digest);
+SHA2_PROC void sha224(const unsigned char *message, unsigned int len,
+            unsigned char *digest);
+SHA2_PROC void sha256_init(sha256_ctx * ctx);
+SHA2_PROC void sha256_update(sha256_ctx *ctx, const unsigned char *message,
+                   unsigned int len);
+SHA2_PROC void sha256_final(sha256_ctx *ctx, unsigned char *digest);
+SHA2_PROC void sha256(const unsigned char *message, unsigned int len,
+            unsigned char *digest);
+SHA2_PROC void sha384_init(sha384_ctx *ctx);
+SHA2_PROC void sha384_update(sha384_ctx *ctx, const unsigned char *message,
+                   unsigned int len);
+SHA2_PROC void sha384_final(sha384_ctx *ctx, unsigned char *digest);
+SHA2_PROC void sha384(const unsigned char *message, unsigned int len,
+            unsigned char *digest);
+SHA2_PROC void sha512_init(sha512_ctx *ctx);
+SHA2_PROC void sha512_update(sha512_ctx *ctx, const unsigned char *message,
+                   unsigned int len);
+SHA2_PROC void sha512_final(sha512_ctx *ctx, unsigned char *digest);
+SHA2_PROC void sha512(const unsigned char *message, unsigned int len,
+            unsigned char *digest);
+#ifdef __cplusplus
+}
+#endif
+#endif
+#ifndef IDLE_FUNCTIONS_DEFINED
+#define IDLE_FUNCTIONS_DEFINED
+# ifdef IDLE_SOURCE
+#  define IDLE_PROC(type,name) EXPORT_METHOD type CPROC name
+# else
+#  define IDLE_PROC(type,name) IMPORT_METHOD type CPROC name
+# endif
+#ifdef __cplusplus
+namespace sack {
+	namespace timers {
+#endif
+// return -1 if not the correct thread
+// return 0 if no events processed
+// return 1 if events were processed
+typedef int (CPROC *IdleProc)(uintptr_t);
+IDLE_PROC( void, AddIdleProc )( IdleProc Proc, uintptr_t psvUser );
+IDLE_PROC( int, RemoveIdleProc )( IdleProc Proc );
+IDLE_PROC( int, Idle )( void );
+IDLE_PROC( int, IdleFor )( uint32_t dwMilliseconds );
+#ifdef __cplusplus
+//	namespace timers {
+	}
+//namespace sack {
+}
+using namespace sack::timers;
 #endif
 #endif
 #ifndef SACK_VFS_DEFINED
@@ -9061,47 +13350,51 @@ using namespace sack::filesys;
 /* define the file system namespace. */
 #define SACK_VFS_NAMESPACE SACK_NAMESPACE _SACK_VFS_NAMESPACE
 SACK_VFS_NAMESPACE
+#if !defined( VIRTUAL_OBJECT_STORE ) && !defined( FILE_BASED_VFS )
+struct sack_vfs_volume;
+struct sack_vfs_file;
+struct sack_vfs_find_info;
 // if the option to auto mount a file system is used, this is the
 // name of the 'file system interface'  ( sack_get_filesystem_interface( SACK_VFS_FILESYSTEM_NAME ) )
-#define SACK_VFS_FILESYSTEM_NAME WIDE("sack_shmem")
+#define SACK_VFS_FILESYSTEM_NAME "sack_shmem"
 // open a volume at the specified pathname.
 // if the volume does not exist, will create it.
 // if the volume does exist, a quick validity check is made on it, and then the result is opened
 // returns NULL if failure.  (permission denied to the file, or invalid filename passed, could be out of space... )
 // same as load_cyrypt_volume with userkey and devkey NULL.
-SACK_VFS_PROC struct volume * CPROC sack_vfs_load_volume( CTEXTSTR filepath );
+SACK_VFS_PROC struct sack_vfs_volume * CPROC sack_vfs_load_volume( CTEXTSTR filepath );
 // open a volume at the specified pathname.  Use the specified keys to encrypt it.
 // if the volume does not exist, will create it.
 // if the volume does exist, a quick validity check is made on it, and then the result is opened
 // returns NULL if failure.  (permission denied to the file, or invalid filename passed, could be out of space... )
 // if the keys are NULL same as load_volume.
-SACK_VFS_PROC struct volume * CPROC sack_vfs_load_crypt_volume( CTEXTSTR filepath, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey );
+SACK_VFS_PROC struct sack_vfs_volume * CPROC sack_vfs_load_crypt_volume( CTEXTSTR filepath, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey );
 // pass some memory and a memory length of the memory to use as a volume.
 // if userkey and/or devkey are not NULL the memory is assume to be encrypted with those keys.
 // the space is opened as readonly; write accesses/expanding operations will fail.
-SACK_VFS_PROC struct volume * CPROC sack_vfs_use_crypt_volume( POINTER filemem, size_t size, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey );
+SACK_VFS_PROC struct sack_vfs_volume * CPROC sack_vfs_use_crypt_volume( POINTER filemem, size_t size, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey );
 // close a volume; release all resources; any open files will keep the volume open.
 // when the final file closes the volume will complete closing.
-SACK_VFS_PROC void            CPROC sack_vfs_unload_volume( struct volume * vol );
+SACK_VFS_PROC void            CPROC sack_vfs_unload_volume( struct sack_vfs_volume * vol );
 // remove unused extra allocated space at end of volume.  During working process, extra space is preallocated for
 // things to be stored in.
-SACK_VFS_PROC void            CPROC sack_vfs_shrink_volume( struct volume * vol );
+SACK_VFS_PROC void            CPROC sack_vfs_shrink_volume( struct sack_vfs_volume * vol );
 // remove encryption from volume.
-SACK_VFS_PROC LOGICAL         CPROC sack_vfs_decrypt_volume( struct volume *vol );
+SACK_VFS_PROC LOGICAL         CPROC sack_vfs_decrypt_volume( struct sack_vfs_volume *vol );
 // change the key applied to a volume.
-SACK_VFS_PROC LOGICAL         CPROC sack_vfs_encrypt_volume( struct volume *vol, uintptr_t version, CTEXTSTR key1, CTEXTSTR key2 );
+SACK_VFS_PROC LOGICAL         CPROC sack_vfs_encrypt_volume( struct sack_vfs_volume *vol, uintptr_t version, CTEXTSTR key1, CTEXTSTR key2 );
 // create a signature of current directory of volume.
 // can be used to validate content.  Returns 256 character hex string.
-SACK_VFS_PROC const char *    CPROC sack_vfs_get_signature( struct volume *vol );
+SACK_VFS_PROC const char *    CPROC sack_vfs_get_signature( struct sack_vfs_volume *vol );
 // pass an offset from memory start and the memory start...
 // computes the distance, uses that to generate a signature
 // returns BLOCK_SIZE length signature; recommend using at least 128 bits of it.
 SACK_VFS_PROC const uint8_t * CPROC sack_vfs_get_signature2( POINTER disk, POINTER diskReal );
 // ---------- Operations on files in volumes ------------------
 // open a file, creates if does not exist.
-SACK_VFS_PROC struct sack_vfs_file * CPROC sack_vfs_openfile( struct volume *vol, CTEXTSTR filename );
+SACK_VFS_PROC struct sack_vfs_file * CPROC sack_vfs_openfile( struct sack_vfs_volume *vol, CTEXTSTR filename );
 // check if a file exists (if it does not exist, and you don't want it created, can use this and not openfile)
-SACK_VFS_PROC int CPROC sack_vfs_exists( struct volume *vol, const char * file );
+SACK_VFS_PROC int CPROC sack_vfs_exists( struct sack_vfs_volume *vol, const char * file );
 // close a file.
 SACK_VFS_PROC int CPROC sack_vfs_close( struct sack_vfs_file *file );
 // get the current File Position Index (FPI).
@@ -9111,29 +13404,904 @@ SACK_VFS_PROC size_t CPROC sack_vfs_size( struct sack_vfs_file *file );
 // set the current File Position Index (FPI).
 SACK_VFS_PROC size_t CPROC sack_vfs_seek( struct sack_vfs_file *file, size_t pos, int whence );
 // write starting at the current FPI.
-SACK_VFS_PROC size_t CPROC sack_vfs_write( struct sack_vfs_file *file, const char * data, size_t length );
+SACK_VFS_PROC size_t CPROC sack_vfs_write( struct sack_vfs_file *file, const void * data, size_t length );
 // read starting at the current FPI.
-SACK_VFS_PROC size_t CPROC sack_vfs_read( struct sack_vfs_file *file, char * data, size_t length );
+SACK_VFS_PROC size_t CPROC sack_vfs_read( struct sack_vfs_file *file, void * data, size_t length );
 // sets the file length to the current FPI.
 SACK_VFS_PROC size_t CPROC sack_vfs_truncate( struct sack_vfs_file *file );
-// psv should be struct volume *vol;
+// psv should be struct sack_vfs_volume *vol;
 // delete a filename.  Clear the space it was occupying.
-SACK_VFS_PROC int CPROC sack_vfs_unlink_file( struct volume *vol, const char * filename );
+SACK_VFS_PROC int CPROC sack_vfs_unlink_file( struct sack_vfs_volume *vol, const char * filename );
+// rename a file within the filesystem; if the target name exists, it is deleted.  If the target file is also open, it will be prevented from deletion; and duplicate filenames will end up exising(?)
+SACK_VFS_PROC LOGICAL CPROC sack_vfs_rename( uintptr_t psvInstance, const char *original, const char *newname );
 // -----------  directory interface commands. ----------------------
 // returns find_info which is then used in subsequent commands.
-SACK_VFS_PROC struct find_info * CPROC sack_vfs_find_create_cursor(uintptr_t psvInst,const char *base,const char *mask );
+SACK_VFS_PROC struct sack_vfs_find_info * CPROC sack_vfs_find_create_cursor(uintptr_t psvInst,const char *base,const char *mask );
 // reset find_info to the first directory entry.  returns 0 if no entry.
-SACK_VFS_PROC int CPROC sack_vfs_find_first( struct find_info *info );
+SACK_VFS_PROC int CPROC sack_vfs_find_first( struct sack_vfs_find_info *info );
 // closes a find cursor; returns 0.
-SACK_VFS_PROC int CPROC sack_vfs_find_close( struct find_info *info );
+SACK_VFS_PROC int CPROC sack_vfs_find_close( struct sack_vfs_find_info *info );
 // move to the next entry returns 0 if no entry.
-SACK_VFS_PROC int CPROC sack_vfs_find_next( struct find_info *info );
+SACK_VFS_PROC int CPROC sack_vfs_find_next( struct sack_vfs_find_info *info );
 // get file information for the file at the current cursor position...
-SACK_VFS_PROC char * CPROC sack_vfs_find_get_name( struct find_info *info );
+SACK_VFS_PROC char * CPROC sack_vfs_find_get_name( struct sack_vfs_find_info *info );
 // get file information for the file at the current cursor position...
-SACK_VFS_PROC size_t CPROC sack_vfs_find_get_size( struct find_info *info );
-SACK_VFS_NAMESPACE_END
-#ifdef __cplusplus
-using namespace sack::SACK_VFS;
+SACK_VFS_PROC size_t   CPROC sack_vfs_find_get_size ( struct sack_vfs_find_info *info );
+SACK_VFS_PROC uint64_t CPROC sack_vfs_find_get_ctime( struct sack_vfs_find_info *info );
+SACK_VFS_PROC uint64_t CPROC sack_vfs_find_get_wtime( struct sack_vfs_find_info *info );
 #endif
+#ifdef __cplusplus
+namespace fs {
+#endif
+	struct sack_vfs_fs_volume;
+	struct sack_vfs_fs_file;
+	struct sack_vfs_fs_find_info;
+	// open a volume at the specified pathname.
+	// if the volume does not exist, will create it.
+	// if the volume does exist, a quick validity check is made on it, and then the result is opened
+	// returns NULL if failure.  (permission denied to the file, or invalid filename passed, could be out of space... )
+	// same as load_cyrypt_volume with userkey and devkey NULL.
+	SACK_VFS_PROC struct sack_vfs_fs_volume * CPROC sack_vfs_fs_load_volume( CTEXTSTR filepath );
+	// open a volume at the specified pathname.  Use the specified keys to encrypt it.
+	// if the volume does not exist, will create it.
+	// if the volume does exist, a quick validity check is made on it, and then the result is opened
+	// returns NULL if failure.  (permission denied to the file, or invalid filename passed, could be out of space... )
+	// if the keys are NULL same as load_volume.
+	SACK_VFS_PROC struct sack_vfs_fs_volume * CPROC sack_vfs_fs_load_crypt_volume( CTEXTSTR filepath, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey );
+	// pass some memory and a memory length of the memory to use as a volume.
+	// if userkey and/or devkey are not NULL the memory is assume to be encrypted with those keys.
+	// the space is opened as readonly; write accesses/expanding operations will fail.
+	SACK_VFS_PROC struct sack_vfs_fs_volume * CPROC sack_vfs_fs_use_crypt_volume( POINTER filemem, size_t size, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey );
+	// close a volume; release all resources; any open files will keep the volume open.
+	// when the final file closes the volume will complete closing.
+	SACK_VFS_PROC void            CPROC sack_vfs_fs_unload_volume( struct sack_vfs_fs_volume * vol );
+	// remove unused extra allocated space at end of volume.  During working process, extra space is preallocated for
+	// things to be stored in.
+	SACK_VFS_PROC void            CPROC sack_vfs_fs_shrink_volume( struct sack_vfs_fs_volume * vol );
+	// remove encryption from volume.
+	SACK_VFS_PROC LOGICAL         CPROC sack_vfs_fs_decrypt_volume( struct sack_vfs_fs_volume *vol );
+	// change the key applied to a volume.
+	SACK_VFS_PROC LOGICAL         CPROC sack_vfs_fs_encrypt_volume( struct sack_vfs_fs_volume *vol, uintptr_t version, CTEXTSTR key1, CTEXTSTR key2 );
+	// create a signature of current directory of volume.
+	// can be used to validate content.  Returns 256 character hex string.
+	SACK_VFS_PROC const char *    CPROC sack_vfs_fs_get_signature( struct sack_vfs_fs_volume *vol );
+	// pass an offset from memory start and the memory start...
+	// computes the distance, uses that to generate a signature
+	// returns BLOCK_SIZE length signature; recommend using at least 128 bits of it.
+	SACK_VFS_PROC const uint8_t * CPROC sack_vfs_fs_get_signature2( POINTER disk, POINTER diskReal );
+	// ---------- Operations on files in volumes ------------------
+	// open a file, creates if does not exist.
+	SACK_VFS_PROC struct sack_vfs_fs_file * CPROC sack_vfs_fs_openfile( struct sack_vfs_fs_volume *vol, CTEXTSTR filename );
+	// check if a file exists (if it does not exist, and you don't want it created, can use this and not openfile)
+	SACK_VFS_PROC int CPROC sack_vfs_fs_exists( struct sack_vfs_fs_volume *vol, const char * file );
+	// close a file.
+	SACK_VFS_PROC int CPROC sack_vfs_fs_close( struct sack_vfs_fs_file *file );
+	// get the current File Position Index (FPI).
+	SACK_VFS_PROC size_t CPROC sack_vfs_fs_tell( struct sack_vfs_fs_file *file );
+	// get the length of the file
+	SACK_VFS_PROC size_t CPROC sack_vfs_fs_size( struct sack_vfs_fs_file *file );
+	// set the current File Position Index (FPI).
+	SACK_VFS_PROC size_t CPROC sack_vfs_fs_seek( struct sack_vfs_fs_file *file, size_t pos, int whence );
+	// write starting at the current FPI.
+	SACK_VFS_PROC size_t CPROC sack_vfs_fs_write( struct sack_vfs_fs_file *file, const void * data, size_t length );
+	// read starting at the current FPI.
+	SACK_VFS_PROC size_t CPROC sack_vfs_fs_read( struct sack_vfs_fs_file *file, void * data, size_t length );
+	// sets the file length to the current FPI.
+	SACK_VFS_PROC size_t CPROC sack_vfs_fs_truncate( struct sack_vfs_fs_file *file );
+	// psv should be struct sack_vfs_fs_volume *vol;
+	// delete a filename.  Clear the space it was occupying.
+	SACK_VFS_PROC int CPROC sack_vfs_fs_unlink_file( struct sack_vfs_fs_volume *vol, const char * filename );
+	// rename a file within the filesystem; if the target name exists, it is deleted.  If the target file is also open, it will be prevented from deletion; and duplicate filenames will end up exising(?)
+	SACK_VFS_PROC LOGICAL CPROC sack_vfs_fs_rename( uintptr_t psvInstance, const char *original, const char *newname );
+	// -----------  directory interface commands. ----------------------
+	// returns find_info which is then used in subsequent commands.
+	SACK_VFS_PROC struct sack_vfs_fs_find_info * CPROC sack_vfs_fs_find_create_cursor( uintptr_t psvInst, const char *base, const char *mask );
+	// reset find_info to the first directory entry.  returns 0 if no entry.
+	SACK_VFS_PROC int CPROC sack_vfs_fs_find_first( struct sack_vfs_fs_find_info *info );
+	// closes a find cursor; returns 0.
+	SACK_VFS_PROC int CPROC sack_vfs_fs_find_close( struct sack_vfs_fs_find_info *info );
+	// move to the next entry returns 0 if no entry.
+	SACK_VFS_PROC int CPROC sack_vfs_fs_find_next( struct sack_vfs_fs_find_info *info );
+	// get file information for the file at the current cursor position...
+	SACK_VFS_PROC char * CPROC sack_vfs_fs_find_get_name( struct sack_vfs_fs_find_info *info );
+	// get file information for the file at the current cursor position...
+	SACK_VFS_PROC size_t CPROC sack_vfs_fs_find_get_size( struct sack_vfs_fs_find_info *info );
+#ifdef __cplusplus
+}
+#endif
+#ifdef __cplusplus
+namespace objStore {
+#endif
+	struct sack_vfs_os_volume;
+	struct sack_vfs_os_file;
+	struct sack_vfs_os_find_info;
+	/* thse should probably be moved to sack_vfs_os.h being file system specific extensions. */
+	enum sack_object_store_file_system_file_ioctl_ops {
+  // psvInstance should be a file handle pass (char*, size_t length )
+		SOSFSFIO_PROVIDE_SEALANT,
+ // test if file has been tampered, is is still sealed. pass (address of int)
+		SOSFSFIO_TAMPERED,
+ // get the resulting storage ID.  (Move ID creation into low level driver)
+		SOSFSFIO_STORE_OBJECT,
+ // set key required to read this record.
+		SOSFSFIO_PROVIDE_READKEY,
+		//SFSIO_GET_OBJECT_ID, // get the resulting storage ID.  (Move ID creation into low level driver)
+ // creates an index for this record.
+		SOSFSFIO_CREATE_INDEX,
+ // remove an index (by name)
+		SOSFSFIO_DESTROY_INDEX,
+		SOSFSFIO_ADD_INDEX_ITEM,
+		SOSFSFIO_REMOVE_INDEX_ITEM,
+		SOSFSFIO_ADD_REFERENCE,
+		SOSFSFIO_REMOVE_REFERENCE,
+		SOSFSFIO_ADD_REFERENCE_BY,
+		SOSFSFIO_REMOVE_REFERENCE_BY,
+	};
+	enum sack_object_store_file_system_system_ioctl_ops {
+ // get the resulting storage ID.  (Move ID creation into low level driver)
+		SOSFSSIO_STORE_OBJECT,
+		SOSFSSIO_PATCH_OBJECT,
+		SOSFSSIO_LOAD_OBJECT,
+		//SFSIO_GET_OBJECT_ID, // get the resulting storage ID.  (Move ID creation into low level driver)
+	};
+// returns a pointer to and array of buffers.
+// the last pointer in the list is NULL.
+// each pointer in the list points to a structure containing a pointer to the data and the length of the data
+#define sack_vfs_os_ioctl_load_decrypt_object( vol, objId,objIdLen, seal,seallen )                            ((struct {uint8_t*, size_t}*)sack_fs_ioctl( vol, SOSFSSIO_LOAD_OBJECT, objId, objIdLen, seal, seallen ))
+// returns a pointer to and array of buffers.
+// the last pointer in the list is NULL.
+// each pointer in the list points to a structure containing a pointer to the data and the length of the data
+#define sack_vfs_os_ioctl_load_object( vol, objId,objIdLen )                                                  ((struct {uint8_t*, size_t}*)sack_fs_ioctl( vol, SOSFSSIO_LOAD_OBJECT, objId, objIdLen ))
+// unsealed store/update(patch)
+// returns TRUE/FALSE. true if the object already exists, or was successfully written.
+// store object data, get a unique ID for the data.
+// {
+//     char data[] = "some data";
+//     char result[44];
+//     sack_vfs_os_ioctl_store_rw_object( vol, data, sizeof( data ), result, 44 );
+// }
+#define sack_vfs_os_ioctl_store_rw_object( vol, obj,objlen, result, resultlen )                                 sack_fs_ioctl( vol, SOSFSSIO_STORE_OBJECT, FALSE, obj, objlen, NULL, 0, NULL, 0, NULL, 0, result, resultlen )
+// re-write an object with new content using old ID.
+// returns TRUE/FALSE. true if the patch already exists, or was successfully written.
+// {
+//     char data[] = "some data";
+//     char oldResult[] = "AAAAAAAAAAAAAAAAAAAAAAAA"; // ID from previous store result
+//     char result[44];
+//     sack_vfs_os_ioctl_patch_rw_object( vol, oldResult, sizeof( oldReult-1 ), data, sizeof( data ), result, 44 );
+// }
+#define sack_vfs_os_ioctl_patch_rw_object( vol, objId,objIdLen, obj,objlen )                                     sack_fs_ioctl( vol, SOSFSSIO_PATCH_OBJECT, FALSE, objId, objIdLen, NULL, 0, obj, objlen, NULL, 0, NULL, 0 )
+// sealed store and patch
+// store a unencrypted, sealed object using specified sealant
+// store data to a new sealed block.  Also encrypt the data
+// returns TRUE/FALSE. true if the object already exists, or was successfully written.
+// {
+//     char data[] = "some data";
+//     char seal[] = "BBBBBBBBBBBBBBBBBBBBBBBB"; // Some sealant bsea64
+//     char result[44];
+//     sack_vfs_os_ioctl_store_crypt_object( vol, data, sizeof( data ), seal, sizeof( seal ), result, 44 );
+// }
+#define sack_vfs_os_ioctl_store_crypt_owned_object( vol, obj,objlen, seal,seallen, readkey,readkeylen, result, resultlen )                 sack_fs_ioctl( vol, SOSFSSIO_STORE_OBJECT, TRUE,TRUE,  obj, objlen, NULL, 0, seal, seallen, readkey,readkeylen, result, resultlen )
+// store data to a new sealed block.  Also encrypt the data
+// returns TRUE/FALSE. true if the object already exists, or was successfully written.
+// {
+//     char data[] = "some data";
+//     char seal[] = "BBBBBBBBBBBBBBBBBBBBBBBB"; // Some sealant bsea64
+//     char result[44];
+//     sack_vfs_os_ioctl_store_crypt_object( vol, data, sizeof( data ), seal, sizeof( seal ), result, 44 );
+// }
+#define sack_vfs_os_ioctl_store_crypt_sealed_object( vol, obj,objlen, seal,seallen, readkey,readkeylen, result, resultlen )                 sack_fs_ioctl( vol, SOSFSSIO_STORE_OBJECT, TRUE,FALSE,  obj, objlen, NULL, 0, seal, seallen, readkey,readkeylen, result, resultlen )
+// store patch to an existing sealed block.  (Writes never change existing data), also encrypt the data
+// returns TRUE/FALSE. true if the patch already exists, or was successfully written.
+// {
+//     char data[] = "some data";
+//     char seal[] = "BBBBBBBBBBBBBBBBBBBBBBBB"; // Some sealant bsea64
+//     char oldResult[] = "AAAAAAAAAAAAAAAAAAAAAAAA"; // ID from previous store result
+//     char result[44];
+//     sack_vfs_os_ioctl_patch_crypt_object( vol, oldResult, sizeof( oldResult )-1, data, sizeof( data ), seal, sizeof( seal ), result, 44 );
+// }
+#define sack_vfs_os_ioctl_patch_crypt_owned_object( vol, objId,objIdLen, obj,objlen, seal,seallen, readkey,readkeylen, result, resultlen ) sack_fs_ioctl( vol, SOSFSSIO_PATCH_OBJECT, TRUE, TRUE, objId, objIdLen, authId, authIdLen, obj, objlen, seal, seallen, readkey,readkeylen, result, resultlen )
+// store patch to an existing sealed block.  (Writes never change existing data), also encrypt the data
+// returns TRUE/FALSE. true if the patch already exists, or was successfully written.
+// {
+//     char data[] = "some data";
+//     char seal[] = "BBBBBBBBBBBBBBBBBBBBBBBB"; // Some sealant bsea64
+//     char oldResult[] = "AAAAAAAAAAAAAAAAAAAAAAAA"; // ID from previous store result
+//     char result[44];
+//     sack_vfs_os_ioctl_patch_crypt_object( vol, oldResult, sizeof( oldResult )-1, data, sizeof( data ), seal, sizeof( seal ), result, 44 );
+// }
+#define sack_vfs_os_ioctl_patch_crypt_sealed_object( vol, objId,objIdLen, obj,objlen, seal,seallen, result, resultlen ) sack_fs_ioctl( vol, SOSFSSIO_PATCH_OBJECT, TRUE, FALSE, objId, objIdLen, authId, authIdLen, obj, objlen, seal, seallen, result, resultlen )
+// store data to a new sealed block.  Data is publically readable.
+// returns TRUE/FALSE. true if the object already exists, or was successfully written.
+// {
+//     char data[] = "some data";
+//     char seal[] = "BBBBBBBBBBBBBBBBBBBBBBBB"; // Some sealant bsea64
+//     char result[44];
+//     sack_vfs_os_ioctl_store_owned_object( vol, data, sizeof( data ), seal, sizeof( seal ), result, 44 );
+// }
+#define sack_vfs_os_ioctl_store_owned_object( vol, obj,objlen, seal,seallen, result, resultlen )                 sack_fs_ioctl( vol, SOSFSSIO_STORE_OBJECT, FALSE, TRUE, obj, objlen, NULL, 0, seal, seallen, NULL, 0, result, resultlen )
+// store data to a new sealed block.  Data is publically readable.
+// returns TRUE/FALSE. true if the object already exists, or was successfully written.
+// {
+//     char data[] = "some data";
+//     char seal[] = "BBBBBBBBBBBBBBBBBBBBBBBB"; // Some sealant bsea64
+//     char result[44];
+//     sack_vfs_os_ioctl_store_sealed_object( vol, data, sizeof( data ), seal, sizeof( seal ), result, 44 );
+// }
+#define sack_vfs_os_ioctl_store_sealed_object( vol, obj,objlen, seal,seallen, result, resultlen )                 sack_fs_ioctl( vol, SOSFSSIO_STORE_OBJECT, FALSE, FALSE, obj, objlen, NULL, 0, seal, seallen, NULL, 0, result, resultlen )
+// store patch to an existing sealed block.  (Writes never change existing data).  Data is publically readable.
+// returns TRUE/FALSE. true if the patch already exists, or was successfully written.
+// {
+//     char data[] = "some data";
+//     char seal[] = "BBBBBBBBBBBBBBBBBBBBBBBB"; // Some sealant bsea64
+//     char oldResult[] = "AAAAAAAAAAAAAAAAAAAAAAAA"; // ID from previous store result
+//     char result[44];
+//     sack_vfs_os_ioctl_patch_object( vol, oldResult, sizeof( oldResult )-1, data, sizeof( data ), seal, sizeof( seal ), result, 44 );
+// }
+#define sack_vfs_os_ioctl_patch_owned_object( vol, objId,objIdLen, obj,objlen, seal,seallen, result, resultlen ) sack_fs_ioctl( vol, SOSFSSIO_PATCH_OBJECT, FALSE, TRUE, objId, objIdLen, authId, authIdLen, obj, objlen, seal, seallen, result, resultlen )
+// store patch to an existing sealed block.  (Writes never change existing data).  Data is publically readable.
+// returns TRUE/FALSE. true if the patch already exists, or was successfully written.
+// {
+//     char data[] = "some data";
+//     char seal[] = "BBBBBBBBBBBBBBBBBBBBBBBB"; // Some sealant bsea64
+//     char oldResult[] = "AAAAAAAAAAAAAAAAAAAAAAAA"; // ID from previous store result
+//     char result[44];
+//     sack_vfs_os_ioctl_patch_object( vol, oldResult, sizeof( oldResult )-1, data, sizeof( data ), seal, sizeof( seal ), result, 44 );
+// }
+#define sack_vfs_os_ioctl_patch_sealed_object( vol, objId,objIdLen, obj,objlen, seal,seallen, result, resultlen ) sack_fs_ioctl( vol, SOSFSSIO_PATCH_OBJECT, FALSE, FALSE, objId, objIdLen, authId, authIdLen, obj, objlen, seal, seallen, result, resultlen )
+#define sack_vfs_os_ioctl_create_index( file, indexName ) sack_vfs_os_fs_ioctl( file, SOSFSFIO_CREATE_INDEX, indexName )
+// open a volume at the specified pathname.
+// if the volume does not exist, will create it.
+// if the volume does exist, a quick validity check is made on it, and then the result is opened
+// returns NULL if failure.  (permission denied to the file, or invalid filename passed, could be out of space... )
+// same as load_cyrypt_volume with userkey and devkey NULL.
+SACK_VFS_PROC struct sack_vfs_os_volume * CPROC sack_vfs_os_load_volume( CTEXTSTR filepath );
+/*
+    polish volume cleans up some of the dirty sectors.  It starts a background thread that
+	waits a short time of no dirty updates.
+ */
+SACK_VFS_PROC void CPROC sack_vfs_os_polish_volume( struct sack_vfs_os_volume* vol );
+// open a volume at the specified pathname.  Use the specified keys to encrypt it.
+// if the volume does not exist, will create it.
+// if the volume does exist, a quick validity check is made on it, and then the result is opened
+// returns NULL if failure.  (permission denied to the file, or invalid filename passed, could be out of space... )
+// if the keys are NULL same as load_volume.
+SACK_VFS_PROC struct sack_vfs_os_volume * CPROC sack_vfs_os_load_crypt_volume( CTEXTSTR filepath, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey );
+// pass some memory and a memory length of the memory to use as a volume.
+// if userkey and/or devkey are not NULL the memory is assume to be encrypted with those keys.
+// the space is opened as readonly; write accesses/expanding operations will fail.
+SACK_VFS_PROC struct sack_vfs_os_volume * CPROC sack_vfs_os_use_crypt_volume( POINTER filemem, size_t size, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey );
+// close a volume; release all resources; any open files will keep the volume open.
+// when the final file closes the volume will complete closing.
+SACK_VFS_PROC void            CPROC sack_vfs_os_unload_volume( struct sack_vfs_os_volume * vol );
+// remove unused extra allocated space at end of volume.  During working process, extra space is preallocated for
+// things to be stored in.
+SACK_VFS_PROC void            CPROC sack_vfs_os_shrink_volume( struct sack_vfs_os_volume * vol );
+// remove encryption from volume.
+SACK_VFS_PROC LOGICAL         CPROC sack_vfs_os_decrypt_volume( struct sack_vfs_os_volume *vol );
+// change the key applied to a volume.
+SACK_VFS_PROC LOGICAL         CPROC sack_vfs_os_encrypt_volume( struct sack_vfs_os_volume *vol, uintptr_t version, CTEXTSTR key1, CTEXTSTR key2 );
+// create a signature of current directory of volume.
+// can be used to validate content.  Returns 256 character hex string.
+SACK_VFS_PROC const char *    CPROC sack_vfs_os_get_signature( struct sack_vfs_os_volume *vol );
+// pass an offset from memory start and the memory start...
+// computes the distance, uses that to generate a signature
+// returns BLOCK_SIZE length signature; recommend using at least 128 bits of it.
+SACK_VFS_PROC const uint8_t * CPROC sack_vfs_os_get_signature2( POINTER disk, POINTER diskReal );
+// extra file system operations, not in the normal API definition set.
+SACK_VFS_PROC uintptr_t CPROC sack_vfs_os_system_ioctl( struct sack_vfs_os_volume* psvInstance, uintptr_t opCode, ... );
+// ---------- Operations on files in volumes ------------------
+// open a file, creates if does not exist.
+SACK_VFS_PROC struct sack_vfs_os_file * CPROC sack_vfs_os_openfile( struct sack_vfs_os_volume *vol, CTEXTSTR filename );
+// check if a file exists (if it does not exist, and you don't want it created, can use this and not openfile)
+SACK_VFS_PROC int CPROC sack_vfs_os_exists( struct sack_vfs_os_volume *vol, const char * file );
+// extra operations, not in the normal API definition set.
+SACK_VFS_PROC uintptr_t CPROC sack_vfs_os_file_ioctl( struct sack_vfs_os_file *file, uintptr_t opCode, ... );
+// close a file.
+SACK_VFS_PROC int CPROC sack_vfs_os_close( struct sack_vfs_os_file *file );
+// get the current File Position Index (FPI).
+SACK_VFS_PROC size_t CPROC sack_vfs_os_tell( struct sack_vfs_os_file *file );
+// get the length of the file
+SACK_VFS_PROC size_t CPROC sack_vfs_os_size( struct sack_vfs_os_file *file );
+// set the current File Position Index (FPI).
+SACK_VFS_PROC size_t CPROC sack_vfs_os_seek( struct sack_vfs_os_file *file, size_t pos, int whence );
+// write starting at the current FPI.
+SACK_VFS_PROC size_t CPROC sack_vfs_os_write( struct sack_vfs_os_file *file, const void * data, size_t length );
+// read starting at the current FPI.
+SACK_VFS_PROC size_t CPROC sack_vfs_os_read( struct sack_vfs_os_file *file, void * data, size_t length );
+// sets the file length to the current FPI.
+SACK_VFS_PROC size_t CPROC sack_vfs_os_truncate( struct sack_vfs_os_file *file );
+// psv should be struct sack_vfs_os_volume *vol;
+// delete a filename.  Clear the space it was occupying.
+SACK_VFS_PROC int CPROC sack_vfs_os_unlink_file( struct sack_vfs_os_volume *vol, const char * filename );
+// rename a file within the filesystem; if the target name exists, it is deleted.  If the target file is also open, it will be prevented from deletion; and duplicate filenames will end up exising(?)
+SACK_VFS_PROC LOGICAL CPROC sack_vfs_os_rename( uintptr_t psvInstance, const char *original, const char *newname );
+// -----------  directory interface commands. ----------------------
+// returns find_info which is then used in subsequent commands.
+SACK_VFS_PROC struct sack_vfs_os_find_info * CPROC sack_vfs_os_find_create_cursor( uintptr_t psvInst, const char *base, const char *mask );
+// reset find_info to the first directory entry.  returns 0 if no entry.
+SACK_VFS_PROC int CPROC sack_vfs_os_find_first( struct sack_vfs_os_find_info *info );
+// closes a find cursor; returns 0.
+SACK_VFS_PROC int CPROC sack_vfs_os_find_close( struct sack_vfs_os_find_info *info );
+// move to the next entry returns 0 if no entry.
+SACK_VFS_PROC int CPROC sack_vfs_os_find_next( struct sack_vfs_os_find_info *info );
+// get file information for the file at the current cursor position...
+SACK_VFS_PROC char * CPROC sack_vfs_os_find_get_name( struct sack_vfs_os_find_info *info );
+// get file information for the file at the current cursor position...
+SACK_VFS_PROC size_t CPROC sack_vfs_os_find_get_size( struct sack_vfs_os_find_info *info );
+#ifdef __cplusplus
+}
+#endif
+#if defined USE_VFS_FS_INTERFACE
+#define sack_vfs_volume sack_vfs_fs_volume
+#define sack_vfs_file sack_vfs_fs_file
+#define sack_vfs_load_volume  sack_vfs_fs_load_volume
+#define sack_vfs_load_crypt_volume  sack_vfs_fs_load_crypt_volume
+#define sack_vfs_use_crypt_volume  sack_vfs_fs_use_crypt_volume
+#define sack_vfs_unload_volume  sack_vfs_fs_unload_volume
+#define sack_vfs_shrink_volume  sack_vfs_fs_shrink_volume
+#define sack_vfs_decrypt_volume  sack_vfs_fs_decrypt_volume
+#define sack_vfs_encrypt_volume  sack_vfs_fs_encrypt_volume
+#define sack_vfs_get_signature  sack_vfs_fs_get_signature
+#define sack_vfs_get_signature2  sack_vfs_fs_get_signature2
+#define sack_vfs_openfile  sack_vfs_fs_openfile
+#define sack_vfs_exists  sack_vfs_fs_exists
+#define sack_vfs_close  sack_vfs_fs_close
+#define sack_vfs_tell  sack_vfs_fs_tell
+#define sack_vfs_size  sack_vfs_fs_size
+#define sack_vfs_seek  sack_vfs_fs_seek
+#define sack_vfs_write  sack_vfs_fs_write
+#define sack_vfs_read  sack_vfs_fs_read
+#define sack_vfs_truncate  sack_vfs_fs_truncate
+#define sack_vfs_unlink_file  sack_vfs_fs_unlink_file
+#define sack_vfs_rename  sack_vfs_fs_rename
+#define sack_vfs_find_create_cursor  sack_vfs_fs_find_create_cursor
+#define sack_vfs_find_first  sack_vfs_fs_find_first
+#define sack_vfs_find_close  sack_vfs_fs_find_close
+#define sack_vfs_find_next  sack_vfs_fs_find_next
+#define sack_vfs_find_get_name  sack_vfs_fs_find_get_name
+#define sack_vfs_find_get_size  sack_vfs_fs_find_get_size
+#define sack_vfs_find_get_cdate  sack_vfs_fs_find_get_cdate
+#define sack_vfs_find_get_wdate  sack_vfs_fs_find_get_wdate
+#endif
+#if defined USE_VFS_OS_INTERFACE
+#define sack_vfs_volume sack_vfs_os_volume
+#define sack_vfs_file sack_vfs_os_file
+#define sack_vfs_load_volume  sack_vfs_os_load_volume
+#define sack_vfs_load_crypt_volume  sack_vfs_os_load_crypt_volume
+#define sack_vfs_use_crypt_volume  sack_vfs_os_use_crypt_volume
+#define sack_vfs_unload_volume  sack_vfs_os_unload_volume
+#define sack_vfs_shrink_volume  sack_vfs_os_shrink_volume
+#define sack_vfs_decrypt_volume  sack_vfs_os_decrypt_volume
+#define sack_vfs_encrypt_volume  sack_vfs_os_encrypt_volume
+#define sack_vfs_get_signature  sack_vfs_os_get_signature
+#define sack_vfs_get_signature2  sack_vfs_os_get_signature2
+#define sack_vfs_openfile  sack_vfs_os_openfile
+#define sack_vfs_exists  sack_vfs_os_exists
+#define sack_vfs_close  sack_vfs_os_close
+#define sack_vfs_tell  sack_vfs_os_tell
+#define sack_vfs_size  sack_vfs_os_size
+#define sack_vfs_seek  sack_vfs_os_seek
+#define sack_vfs_write  sack_vfs_os_write
+#define sack_vfs_read  sack_vfs_os_read
+#define sack_vfs_truncate  sack_vfs_os_truncate
+#define sack_vfs_unlink_file  sack_vfs_os_unlink_file
+#define sack_vfs_rename  sack_vfs_os_rename
+#define sack_vfs_find_create_cursor  sack_vfs_os_find_create_cursor
+#define sack_vfs_find_first  sack_vfs_os_find_first
+#define sack_vfs_find_close  sack_vfs_os_find_close
+#define sack_vfs_find_next  sack_vfs_os_find_next
+#define sack_vfs_find_get_name  sack_vfs_os_find_get_name
+#define sack_vfs_find_get_size  sack_vfs_os_find_get_size
+#define sack_vfs_find_get_cdate  sack_vfs_os_find_get_cdate
+#define sack_vfs_find_get_wdate  sack_vfs_os_find_get_wdate
+#endif
+SACK_VFS_NAMESPACE_END
+#if defined( __cplusplus ) && !defined( SACK_VFS_SOURCE )
+using namespace sack::SACK_VFS;
+//using namespace sack::SACK_VFS::fs;
+//using namespace sack::SACK_VFS::objStore;
+#endif
+#endif
+#ifndef VESL_EMITTER_HEADER_INCLUDED
+#define VESL_EMITTER_HEADER_INCLUDED
+#ifdef VESL_EMITTER_SOURCE
+#define VESL_EMITTER_PROC(type,name) EXPORT_METHOD type CPROC name
+#else
+#define VESL_EMITTER_PROC(type,name) IMPORT_METHOD type CPROC name
+#endif
+#ifdef __cplusplus
+SACK_NAMESPACE namespace network { namespace vesl {
+#endif
+struct vesl_context_object_element;
+struct vesl_context_object;
+struct vesl_context;
+// take a vesl string and a format and fill in a structure from the text.
+// tests all formats, to first-match;
+// take a vesl string and a format and fill in a structure from the text.
+// if object does not fit all members (may have extra, but must have at least all members in message in format to return TRUE)
+// then it returns false; that is if a member is in the 'msg' parameter that is not in
+// the format, then the result is FALSE.
+//  PDATALIST is full of struct vesl_value_container
+// turns out numbers can be  hex, octal and binary numbers  (0x[A-F,a-f,0-9]*, 0b[0-1]*, 0[0-9]*)
+// slightly faster (17%) than vesl6_parse_message because of fewer possible checks.
+VESL_EMITTER_PROC( LOGICAL, vesl_parse_message )(const char * msg
+                                                , size_t msglen
+                                                , PDATALIST *msg_data_out
+																);
+// allocates a parsing context and begins parsing data.
+VESL_EMITTER_PROC( struct vesl_parse_state *, vesl_begin_parse )( void );
+// return TRUE when a completed value/object is available.
+// after returning TRUE, call vesl_parse_get_data.  It is possible that there is
+// still unconsumed data that can begin a new object.  Call this with NULL, 0 for data
+// to consume this internal data.  if this returns FALSE, then ther is no further object
+// to retrieve.
+VESL_EMITTER_PROC( int, vesl_parse_add_data )( struct vesl_parse_state *context
+                                                 , const char * msg
+                                                 , size_t msglen
+                                                 );
+// these are common functions that work for VESL stream parsers
+VESL_EMITTER_PROC( PDATALIST, vesl_parse_get_data )( struct vesl_parse_state *context );
+VESL_EMITTER_PROC( void, vesl_parse_dispose_state )( struct vesl_parse_state **context );
+VESL_EMITTER_PROC( void, vesl_parse_clear_state )(struct vesl_parse_state *context);
+VESL_EMITTER_PROC( PTEXT, vesl_parse_get_error )(struct vesl_parse_state *context);
+// Add some data to parse for vesl stream (which may consist of multiple values)
+// return 1 when a completed value/object is available.
+// after returning 1, call vesl_parse_get_data.  It is possible that there is
+// still unconsumed data that can begin a new object.  Call this with NULL, 0 for data
+// to consume this internal data.  if this returns 0, then there is no further object
+// to retrieve.
+// if this returns -1, an error in parsing has occured, and no further parsing can happen.
+VESL_EMITTER_PROC( int, vesl_parse_add_data )( struct vesl_parse_state *context
+	, const char * msg
+	, size_t msglen
+	);
+// one shot, just process this one message.
+VESL_EMITTER_PROC( LOGICAL, vesl_parse_message )(const char * msg
+	, size_t msglen
+	, PDATALIST *msg_data_out
+	);
+// any allocate mesage parts are released.
+VESL_EMITTER_PROC( void, vesl_dispose_expressions )(PDATALIST *msg_data);
+enum vesl_value_types {
+	VESL_VALUE_UNDEFINED = -1
+	, VESL_VALUE_UNSET = 0
+ //= 1 no data
+	, VESL_VALUE_NULL
+ //= 2 no data
+	, VESL_VALUE_TRUE
+ //= 3 no data
+	, VESL_VALUE_FALSE
+ //= 4 string
+	, VESL_VALUE_STRING
+ //= 5 string + result_d | result_n
+	, VESL_VALUE_NUMBER
+ //= 6 contains
+	, VESL_VALUE_OBJECT
+ //= 7 contains
+	, VESL_VALUE_ARRAY
+	// up to here is supported in VESL
+ //= 8 no data
+	, VESL_VALUE_NEG_NAN
+ //= 9 no data
+	, VESL_VALUE_NAN
+ //= 10 no data
+	, VESL_VALUE_NEG_INFINITY
+ //= 11 no data
+	, VESL_VALUE_INFINITY
+  // = 12 UNIMPLEMENTED
+	, VESL_VALUE_DATE
+ // = 13 no data; used in [,,,] as place holder of empty
+	, VESL_VALUE_EMPTY
+	// --- up to here is supports in VESL(6)
+ // = 14 string needs to be parsed for expressions.
+	, VESL_VALUE_NEED_EVAL
+ // contains
+	, VESL_VALUE_VARIABLE
+ // code (string), contains
+	, VESL_VALUE_FUNCTION
+ // code (string), contains[n] = parameters
+	, VESL_VALUE_FUNCTION_CALL
+ //  ( ... ) or { ... } , string, contains[n] = value(s) last is THE value
+	, VESL_VALUE_EXPRESSION
+ // Symbolic operator, with combination rules so the operator text is complete.
+	, VESL_VALUE_OPERATOR
+ // 'if'  contains[1], contains[1], contains[2]
+	, VESL_VALUE_OP_IF
+ // '?'  contains[N] expressions to evaluate
+	, VESL_VALUE_OP_TRINARY_THEN
+ // ':'  contains[N] expressions to evaluate
+	, VESL_VALUE_OP_TRINARY_ELSE
+ // 'switch'
+	, VESL_VALUE_OP_SWITCH
+ // 'case'
+	, VESL_VALUE_OP_CASE
+ // 'for'   no data, contains[0], contains[1], contains[2],
+	, VESL_VALUE_OP_FOR
+ // 'break'  // strip optional label break
+	, VESL_VALUE_OP_BREAK
+ // 'while'
+	, VESL_VALUE_OP_WHILE
+ // 'do'
+	, VESL_VALUE_OP_DO
+ // 'continue'
+	, VESL_VALUE_OP_CONTINUE
+ // 'goto'
+	, VESL_VALUE_OP_GOTO
+ // 'stop'
+	, VESL_VALUE_OP_STOP
+ // 'this'
+	, VESL_VALUE_OP_THIS
+ // 'holder'
+	, VESL_VALUE_OP_HOLDER
+ // 'base'
+	, VESL_VALUE_OP_BASE
+};
+struct vesl_value_container {
+ // value from above indiciating the type of this value
+	enum vesl_value_types value_type;
+   // the string value of this value (strings and number types only)
+	char *string;
+	size_t stringLen;
+  // boolean whether to use result_n or result_d
+	int float_result;
+	union {
+		double result_d;
+		int64_t result_n;
+		//struct vesl_value_container *nextToken;
+	};
+	//PDATALIST contains;  // list of struct vesl_value_container that this contains.
+  // acutal source datalist(?)
+	PDATALIST *_contains;
+};
+#ifdef __cplusplus
+} } SACK_NAMESPACE_END
+using namespace sack::network::vesl;
+#endif
+#endif
+#ifdef SALTY_RANDOM_GENERATOR_SOURCE
+#define SRG_EXPORT EXPORT_METHOD
+#else
+#define SRG_EXPORT IMPORT_METHOD
+#endif
+//
+// struct random_context *entropy = CreateEntropy( void (*getsalt)( uintptr_t, POINTER *salt, size_t *salt_size ), uintptr_t psv_user );
+// uses sha1
+SRG_EXPORT struct random_context *SRG_CreateEntropy( void (*getsalt)( uintptr_t, POINTER *salt, size_t *salt_size ), uintptr_t psv_user );
+//
+// struct random_context *entropy = CreateEntropy2( void (*getsalt)( uintptr_t, POINTER *salt, size_t *salt_size ), uintptr_t psv_user );
+//  uses a larger salt generator... (sha2-512)
+SRG_EXPORT struct random_context *SRG_CreateEntropy2( void (*getsalt)( uintptr_t, POINTER *salt, size_t *salt_size ), uintptr_t psv_user );
+//
+// struct random_context *entropy = CreateEntropy2( void (*getsalt)( uintptr_t, POINTER *salt, size_t *salt_size ), uintptr_t psv_user );
+//  uses a sha2-256
+SRG_EXPORT struct random_context *SRG_CreateEntropy2_256( void (*getsalt)( uintptr_t, POINTER *salt, size_t *salt_size ), uintptr_t psv_user );
+//
+// struct random_context *entropy = CreateEntropy3( void (*getsalt)( uintptr_t, POINTER *salt, size_t *salt_size ), uintptr_t psv_user );
+//  uses a sha3-512 (keccak)
+SRG_EXPORT struct random_context *SRG_CreateEntropy3( void (*getsalt)( uintptr_t, POINTER *salt, size_t *salt_size ), uintptr_t psv_user );
+//
+// struct random_context *entropy = CreateEntropy4( void (*getsalt)( uintptr_t, POINTER *salt, size_t *salt_size ), uintptr_t psv_user );
+//  uses a K12-32768
+SRG_EXPORT struct random_context *SRG_CreateEntropy4( void( *getsalt )(uintptr_t, POINTER *salt, size_t *salt_size), uintptr_t psv_user );
+// Destroya  context.  Pass the address of your 'struct random_context *entropy;   ... SRG_DestroyEntropy( &entropy );
+SRG_EXPORT void SRG_DestroyEntropy( struct random_context **ppEntropy );
+// get a large number of bits of entropy from the random_context
+// buffer needs to be an integral number of 32 bit elements....
+SRG_EXPORT void SRG_GetEntropyBuffer( struct random_context *ctx, uint32_t *buffer, uint32_t bits );
+// get a number of bits of entropy from the
+// if get_signed is not 0, the result will be sign extended if the last bit is set
+//  (coded on little endian; tests for if ( result & ( 1 << bits - 1 ) ) then sign extend
+SRG_EXPORT int32_t SRG_GetEntropy( struct random_context *ctx, int bits, int get_signed );
+// get a single bit.
+SRG_EXPORT uint32_t SRG_GetBit( struct random_context *ctx );
+// opportunity to reset an entropy generator back to initial condition
+// next call to getentropy will be the same as the first call after create.
+SRG_EXPORT void SRG_ResetEntropy( struct random_context *ctx );
+// After SRG_ResetEntropy(), this takes the existing entropy
+// already in the random_context and seeds the entropy generator
+// with this existing digest;  GetEntropy/GetEntropyBuffer do this
+// internally; but for user control, this is separated from just
+// ResetEntropy().
+//   SRG_ResetEntropy(ctx);   // reset entropy generator to empty.
+//   SRG_StreamEntropy(ctx);  // continue from last ending
+//   SRG_FeedEntropy(ctx, /*buffer*/ ); // mix in some more entropy
+//
+SRG_EXPORT void SRG_StreamEntropy( struct random_context *ctx );
+// Manually load some salt into the next enropy buffer to e retreived.
+// sets up to add the next salt into the buffer.
+SRG_EXPORT void SRG_FeedEntropy( struct random_context *ctx, const uint8_t *salt, size_t salt_size );
+// Flush the current entropy feed to internal entropy feed
+// and initialize with previous feed.
+SRG_EXPORT void SRG_StepEntropy( struct random_context* ctx );
+// reset the state of the random context entirely. (?)
+SRG_EXPORT void SRG_Reset( struct random_context* ctx );
+// restore the random contxt from the external holder specified
+// {
+//    POINTER save_context;
+//    SRG_SaveState( ctx, &save_context );  // will allocate space for the context
+//    SRG_RestoreState( ctx, save_context ); // context should previously be saved
+// }
+SRG_EXPORT void SRG_RestoreState( struct random_context *ctx, POINTER external_buffer_holder );
+// save the random context in an external buffer holder.
+// external buffer holder needs to be initialized to NULL.
+// {
+//    POINTER save_context = NULL;
+//    SRG_SaveState( ctx, &save_context );
+// }
+SRG_EXPORT void SRG_SaveState( struct random_context *ctx, POINTER *external_buffer_holder, size_t *dataSize );
+//
+// Randeom Hash generators.  Returns a 256 bit hash in a base 64 string.
+// internally seeded by clocks
+// Are thread safe; current thread pool is 32 before having to wait
+//
+// return a unique ID using SHA2_512
+SRG_EXPORT char * SRG_ID_Generator( void );
+// return a unique ID using SHA2_256
+SRG_EXPORT char *SRG_ID_Generator_256( void );
+// return a unique ID using SHA3-keccak-512
+SRG_EXPORT char *SRG_ID_Generator3( void );
+// return a unique ID using SHA3-K12-512
+SRG_EXPORT char *SRG_ID_Generator4( void );
+//------------------------------------------------------------------------
+//   crypt_util.c extra simple routines - kinda like 'passwd'
+//
+// usage
+/// { uint8_t* buf; size_t buflen; SRG_DecryptData( <resultfrom encrypt>, &buf, &buflen ); }
+//  buffer result must be released by user
+SRG_EXPORT void SRG_DecryptData( CTEXTSTR local_password, uint8_t* *buffer, size_t *chars );
+SRG_EXPORT void SRG_DecryptRawData( CPOINTER binary, size_t length, uint8_t* *buffer, size_t *chars );
+// text result must release by user
+SRG_EXPORT TEXTSTR SRG_DecryptString( CTEXTSTR local_password );
+// encrypt a block of binary data to another binary buffer
+SRG_EXPORT void SRG_EncryptRawData( CPOINTER buffer, size_t buflen, uint8_t* *result_buf, size_t *result_size );
+// text result must release by user
+SRG_EXPORT TEXTCHAR * SRG_EncryptData( CPOINTER buffer, size_t buflen );
+// text result must release by user
+// calls EncrytpData with buffer and string length + 1 to include the null for decryption.
+SRG_EXPORT TEXTCHAR * SRG_EncryptString( CTEXTSTR buffer );
+// Simplified encyprtion wrapper around OpenSSL/LibreSSL EVP AES-256-CBC, uses key as IV also.
+// result is length; address of pointer to cyphertext is filled in with an Allocated buffer.
+// Limitation of 4G-byte encryption.
+// automaically adds padding as required.
+SRG_EXPORT int SRG_AES_decrypt( uint8_t *ciphertext, int ciphertext_len, uint8_t *key, uint8_t **plaintext );
+// Simplified encyprtion wrapper around OpenSSL/LibreSSL EVP AES-256-CBC, uses key as IV also.
+// result is length; address of pointer to cyphertext is filled in with an Allocated buffer.
+// Limitation of 4G-byte encryption.
+// automaically adds padding as required.
+SRG_EXPORT size_t SRG_AES_encrypt( uint8_t *plaintext, size_t plaintext_len, uint8_t *key, uint8_t **ciphertext );
+// xor-sub-wipe-sub encryption.
+// encrypts objBuf of objBufLen using (keyBuf+tick)
+// pointers refrenced passed to outBuf and outBufLen are filled in with the result
+// Will automatically add 4 bytes and pad up to 8
+SRG_EXPORT void SRG_XSWS_encryptData( uint8_t *objBuf, size_t objBufLen
+	, uint64_t tick, const uint8_t *keyBuf, size_t keyBufLen
+	, uint8_t **outBuf, size_t *outBufLen
+);
+// xor-sub-wipe-sub decryption.
+// decrypts objBuf of objBufLen using (keyBuf+tick)
+// pointers refrenced passed to outBuf and outBufLen are filled in with the result
+//
+SRG_EXPORT void SRG_XSWS_decryptData( uint8_t *objBuf, size_t objBufLen
+	, uint64_t tick, const uint8_t *keyBuf, size_t keyBufLen
+	, uint8_t **outBuf, size_t *outBufLen
+);
+//--------------------------------------------------------------
+// block_shuffle.c
+//
+// Utilities to shuffle 2D data.
+//
+//  This can use a small swap block to tile over a larger 2D area
+//
+//  shuffles a matrix of bytes
+//  1D operation is available by setting either height to 1
+//  (arrays are 'wide' before they are 'high')
+/*
+{
+	struct block_shuffle_key *key = BlockShuffle_CreateKey( SRG_CreateEntropy( NULL, 0 ), 8, 8 );
+	uint8_t input_bytes[8][18];
+	uint8_t encoded_bytes[8][8];
+	uint8_t output_bytes[8][36];
+	BlockShuffle_SetDataBlock( key, input, 2, 2, 15, 3, sizeof( input_bytes[0] )
+		encoded, 0, 0, sizeof( encoded_bytes[0] ) );
+	BlockShuffle_GetDataBlock( key, encoded, 2, 2, 15, 3, sizeof( encoded_bytes[0] )
+		output_bytes, 0, 0, sizeof( input_bytes[0] ) );
+}
+{
+	struct block_shuffle_key *BlockShuffle_CreateKey( SRG_CreateEntropy( NULL, 0 ), 8, 8 );
+	uint8_t input_bytes[8][18];
+	uint8_t encoded_bytes[8][8];
+	uint8_t output_bytes[8][36];
+}
+*/
+// API subjet to CHANGE!
+// creates a swap-matrix of width by height matrix.  Could be a linear
+// swap width (or height) is 1
+SRG_EXPORT struct block_shuffle_key *BlockShuffle_CreateKey( struct random_context *ctx, size_t width, size_t height );
+// do substitution within a range of data
+SRG_EXPORT void BlockShuffle_SetDataBlock( struct block_shuffle_key *key
+	, uint8_t* encrypted, int x, int y, size_t w, size_t h, size_t output_stride
+	, uint8_t* input, int ofs_x, int ofs_y, size_t input_stride );
+// do linear substitution over a range
+SRG_EXPORT void BlockShuffle_SetData( struct block_shuffle_key *key
+	, uint8_t* encrypted, int x, size_t w
+	, uint8_t* input, int ofs_x );
+// reverse subsittuion within a range of data
+SRG_EXPORT void BlockShuffle_GetDataBlock( struct block_shuffle_key *key
+	, uint8_t* encrypted, int x, int y, size_t w, size_t h, size_t encrypted_stride
+	, uint8_t* output, int ofs_x, int ofs_y, size_t stride );
+// reverse linear substituion over a range.
+SRG_EXPORT void BlockShuffle_GetData( struct block_shuffle_key *key
+	, uint8_t* encrypted, size_t x, size_t w
+	, uint8_t* output, size_t ofs_x );
+// Allocate a byte shuffler.
+// This transformation creates a unique mapping of byteA to byteB.
+// The SubByte and BusByte operations may be performed in either order
+// but the complimentary function is required to decode the buffer.
+//  (A->B) mapping with SubByte is different from (A->B) mapping with BusByte
+// Bus(A) != Sub(A)  but  Bus(Sub(A)) == Sub(Bus(A)) == A
+SRG_EXPORT struct byte_shuffle_key *BlockShuffle_ByteShuffler( struct random_context *ctx );
+// Releases any resource sassociated with_byte shuffler_key.
+void BlockShuffle_DropByteShuffler( struct byte_shuffle_key *key );
+// BlockSHuffle_SubBytes and BLockShuffle_BusBytes are reflective routines.
+//  They read bytes from 'bytes' and otuput to 'out_bytes'
+//  in-place operation (bytes == out_bytes) is posssible.
+// SubBytes swaps A->B
+SRG_EXPORT void BlockShuffle_SubBytes( struct byte_shuffle_key *key
+	, uint8_t *bytes, uint8_t *out_bytes, size_t byteCount );
+// swap a single byte; can be in-place.
+SRG_EXPORT void BlockShuffle_SubByte( struct byte_shuffle_key *key
+	, uint8_t *bytes, uint8_t *out_bytes );
+// BlockSHuffle_SubBytes and BlockShuffle_BusBytes are reflective routines.
+//  They read bytes from 'bytes' and otuput to 'out_bytes'
+//  in-place operation (bytes == out_bytes) is posssible.
+// BusBytes swaps B->A
+SRG_EXPORT void BlockShuffle_BusBytes( struct byte_shuffle_key *key, uint8_t *bytes
+	, uint8_t *out_bytes, size_t byteCount );
+// swap a single byte; can be in-place.
+SRG_EXPORT void BlockShuffle_BusByte( struct byte_shuffle_key *key
+	, uint8_t *bytes, uint8_t *out_bytes );
+#ifndef SACKCOMM_PROTECT_ME_AGAINST_DOBULE_INCLUSION
+#define SACKCOMM_PROTECT_ME_AGAINST_DOBULE_INCLUSION
+#ifdef SACKCOMM_SOURCE
+#define SACKCOMM_PROC(type,name) EXPORT_METHOD type CPROC name
+#else
+#define SACKCOMM_PROC(type,name) IMPORT_METHOD type CPROC name
+#endif
+#define SACKCOMM_ERR_NONE_MORE (   2)
+#define SACKCOMM_ERR_NONE_DONE (   1)
+#define SACKCOMM_ERR_NONE      (   0)
+#define SACKCOMM_ERR_ALLOC     (  -1)
+#define SACKCOMM_ERR_COMM      (  -2)
+#define SACKCOMM_ERR_TIMEOUT   (  -3)
+#define SACKCOMM_ERR_PARTIAL   (  -4)
+#define SACKCOMM_ERR_BUFSIZE   (  -5)
+#define SACKCOMM_ERR_MORE      (  -6)
+#define SACKCOMM_ERR_POINTER   (  -7)
+#define SACKCOMM_ERR_UNDERFLOW ( -11)
+#define SACKCOMM_ERR_BUSY      ( -12)
+#define SACKCOMM_ERR_NOTOPEN   ( -13)
+#define SACKCOMM_ERR_MIN -20
+#ifdef __LINUX__
+typedef void DCB;
+typedef void COMSTAT;
+#define STDPROC
+#endif
+SACKCOMM_PROC( void, SetCommRTS )( int nCommID, int iRTS );
+SACKCOMM_PROC( int, SackFlushComm )(int iCommId, int iInOut);
+SACKCOMM_PROC( int, SackGetCommState)(int iCommId, DCB FAR *lpDcb);
+SACKCOMM_PROC( int, SackGetCommError)(int iCommId, COMSTAT FAR *lpStat);
+SACKCOMM_PROC( int, SackSetCommState)(DCB FAR *lpDcb);
+SACKCOMM_PROC( int, SackWriteComm)(int iCommId, void far *pBuf, int iChars);
+SACKCOMM_PROC( int, SackReadComm)(int iCommId, void far *pBuf, int iChars);
+SACKCOMM_PROC( int, SackCloseComm)(int iCommId);
+typedef void (CPROC* CommReadCallback)( uintptr_t psv, int nCommId, POINTER buffer, int len );
+SACKCOMM_PROC( int, SackOpenCommEx)(CTEXTSTR szPort, uint32_t uiRcvQ, uint32_t uiSendQ
+											, CommReadCallback ReadCallback
+					                  , uintptr_t psv );
+#define SackOpenComm( szport, rq, sq ) SackOpenCommEx( szport, rq, sq, NULL, 0 )
+SACKCOMM_PROC( void, SackSetReadCallback )( int nCommId
+                                          , CommReadCallback Callback
+                                          , uintptr_t psvRead );
+SACKCOMM_PROC( int, SackClearReadCallback )( int iCommId
+                                          , CommReadCallback );
+SACKCOMM_PROC( int, SackCommReadBufferEx)( int iCommId, char *buffer, int len
+						 , uint32_t timeout, int *pnCharsRead
+									 DBG_PASS );
+#define SackCommReadBuffer(c,b,l,t,pl) SackCommReadBufferEx( c,b,l,t,pl DBG_SRC )
+SACKCOMM_PROC( int, SackCommReadDataEx)( int iCommId
+						 , uint32_t timeout
+						 , char **pBuffer
+						 , int *pnCharsRead
+						 DBG_PASS
+					  );
+#define SackCommReadData(c,t,pb,pn) SackCommReadDataEx( c,t,pb,pn DBG_SRC )
+SACKCOMM_PROC( int,  SackCommWriteBufferEx)( int iCommId, char *buffer, int len
+							  , uint32_t timeout DBG_PASS );
+#define SackCommWriteBuffer(c,b,l,t) SackCommWriteBufferEx(c,b,l,t DBG_SRC)
+SACKCOMM_PROC( void, SackCommFlush )( int nCommID );
+// changes the read buffer size from 1024 to (bytes?)
+SACKCOMM_PROC( void, SackSetBufferSize )( int iCommId
+													 , int readlen );
+#define WM_COMM_OPEN      WM_USER + 100
+#define WM_COMM_CLOSE     WM_USER + 101
+#define WM_COMM_WRITE     WM_USER + 102
+#define WM_COMM_DATA      WM_USER + 103
+#define WM_COMM_GETERROR  WM_USER + 104
+#define WM_COMM_FLUSH     WM_USER + 105
+#define WM_COMM_CLOSE_ALL WM_USER + 106
+#define WM_COMM_PING      WM_USER + 107
+// normal mode - everyone gets same data notifications
+#define COM_PORT_OWN_SHARE 0
+// exclusive - only this channel callback will get notification
+#define COM_PORT_OWN_EXCLUSIVE 1
+// normal mode but all channels except this one will get notification
+#define COM_PORT_IGNORE 2
+SACKCOMM_PROC( void, SackCommOwnPort )( int nCommID, CommReadCallback func, int own_flags );
+#endif
+/* provides text translation.
+  Primary Usage:
+      SetTranslation( "some string" );
+	 CTEXTSTR result = TranslateText( "some string to translate" );
+	 lprintf( TranslateText( "Some format string %d:%d" ), x, y );
+*/
+#ifndef TRANSLATIONS_DEFINED
+/* Multiple inclusion protection symbol. */
+#define TRANSLATIONS_DEFINED
+#ifdef __cplusplus
+#  define _TRANSLATION_NAMESPACE namespace translation {
+#  define _TRANSLATION_NAMESPACE_END }
+#  define	 SACK_TRANSLATION_NAMESPACE_END } }
+#  define USE_TRANSLATION_NAMESPACE using namespace sack::translation;
+#else
+#  define _TRANSLATION_NAMESPACE
+#  define _TRANSLATION_NAMESPACE_END
+#  define	 SACK_TRANSLATION_NAMESPACE_END
+#  define USE_TRANSLATION_NAMESPACE
+#endif
+#  define TRANSLATION_NAMESPACE SACK_NAMESPACE _TRANSLATION_NAMESPACE
+#  define TRANSLATION_NAMESPACE_END _TRANSLATION_NAMESPACE_END  SACK_NAMESPACE_END
+SACK_NAMESPACE
+	/* Namespace of custom math routines.  Contains operators
+	 for Vectors and fractions. */
+	_TRANSLATION_NAMESPACE
+#define TRANSLATION_API CPROC
+#  ifdef TRANSLATION_SOURCE
+#    define TRANSLATION_PROC EXPORT_METHOD
+#  else
+/* Define the library linkage for a these functions. */
+#    define TRANSLATION_PROC IMPORT_METHOD
+#  endif
+struct translation {
+	TEXTSTR name;
+	PLIST strings;
+};
+typedef struct translation *PTranslation;
+TRANSLATION_PROC LOGICAL TRANSLATION_API SetCurrentTranslation( CTEXTSTR language );
+TRANSLATION_PROC CTEXTSTR TRANSLATION_API TranslateText( CTEXTSTR text );
+TRANSLATION_PROC PTranslation TRANSLATION_API CreateTranslation( CTEXTSTR language );
+TRANSLATION_PROC struct translation * TRANSLATION_API GetTranslation( CTEXTSTR language );
+TRANSLATION_PROC void TRANSLATION_API SetTranslatedString( PTranslation translation, INDEX idx, CTEXTSTR string );
+TRANSLATION_PROC CTEXTSTR TRANSLATION_API GetTranslationName( PTranslation translation );
+TRANSLATION_PROC void TRANSLATION_API SaveTranslationDataEx( const char *filename );
+TRANSLATION_PROC void TRANSLATION_API SaveTranslationData( void );
+TRANSLATION_PROC void TRANSLATION_API SaveTranslationDataToFile( FILE *output );
+TRANSLATION_PROC void TRANSLATION_API LoadTranslationDataEx( const char *filename );
+TRANSLATION_PROC void TRANSLATION_API LoadTranslationData( void );
+TRANSLATION_PROC void TRANSLATION_API LoadTranslationDataFromMemory( POINTER data, size_t length );
+TRANSLATION_PROC void TRANSLATION_API LoadTranslationDataFromFile( FILE *file );
+/*
+   return: PLIST is a list of PTranslation
+*/
+TRANSLATION_PROC PLIST TRANSLATION_API GetTranslations( void );
+TRANSLATION_PROC CTEXTSTR TRANSLATION_API GetTranslationName( struct translation *translation );
+/*
+	return: PLIST of CTEXTSTR which are result strings of this translation
+*/
+TRANSLATION_PROC PLIST TRANSLATION_API GetTranslationStrings( struct translation *translation );
+/*
+  return: PLIST of CTEXTSTR which are source index strings
+  */
+TRANSLATION_PROC PLIST TRANSLATION_API GetTranslationIndexStrings( );
+SACK_TRANSLATION_NAMESPACE_END
+USE_TRANSLATION_NAMESPACE
 #endif

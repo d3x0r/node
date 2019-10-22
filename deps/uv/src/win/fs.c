@@ -1849,26 +1849,20 @@ INLINE static DWORD fs__stat_impl_from_path(WCHAR* path,
   DWORD flags;
   DWORD ret;
   LOGICAL p = 0;
-  if( req->path[0] == 0 ) {
-	  req->statbuf.st_mode = S_IFDIR;
-	  req->ptr = &req->statbuf;
-	  req->result = 0;
-	  return;
+  if( path[0] == 0 ) {
+	  statbuf->st_mode = S_IFDIR;
+	  return 0;
   }
-  if( sack_exists( req->path ) ) {
-	  p = sack_isPath( req->path );
+  if( sack_exists( path ) ) {
+	  p = sack_isPath( path );
 	  if( p )
-		  req->statbuf.st_mode = S_IFDIR;
+		  statbuf->st_mode = S_IFDIR;
 	  else
-		  req->statbuf.st_mode = 0;
-	  req->ptr = &req->statbuf;
-	  req->result = 0;
-	  return;
-  } if( (p = sack_isPath( req->path )) ) {
-	  req->statbuf.st_mode = S_IFDIR;
-	  req->ptr = &req->statbuf;
-	  req->result = 0;
-	  return;
+      statbuf->st_mode = 0;
+	  return 0;
+  } if( (p = sack_isPath( path )) ) {
+	  statbuf->st_mode = S_IFDIR;
+	  return 0;
   }
 
   flags = FILE_FLAG_BACKUP_SEMANTICS;

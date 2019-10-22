@@ -320,6 +320,7 @@ typedef struct uv__dirent_s {
 typedef struct {
   HMODULE handle;
   char* errmsg;
+  char *filename;
 } uv_lib_t;
 
 #define UV_LOOP_PRIVATE_FIELDS                                                \

@@ -138,14 +138,21 @@ static LOGICAL CPROC LoadLibraryDependant( CTEXTSTR name )
 }
 
 LOGICAL LoadAttachedFreeload( char **argv ) {
-
+	char buf[256];
 	size_t sz = 0;
 	POINTER memory;
 	POINTER freeload;
+#ifdef WIN32
+#define useName buf
+	GetModuleFileName( NULL, buf, 256 );
+#else
+#define useName argv[0]
+#endif
+	
 	{
 		uint32_t startTick = GetTickCount();
 		do {
-			memory = OpenSpace( NULL, argv[0], (uintptr_t*)&sz );
+			memory = OpenSpace( NULL, useName, (uintptr_t*)&sz );
 			if( !memory ) {
 				lprintf( "Failed to open memory?" );
 				WakeableSleep( 250 );
@@ -154,7 +161,7 @@ LOGICAL LoadAttachedFreeload( char **argv ) {
 	}
 	if( memory == NULL )
 	{
-		MessageBox( NULL, "Please Launch with full path", "Startup Error", MB_OK );
+		MessageBox( NULL, "Please Launch with full path", useName, MB_OK );
 		return FALSE;
 	}
 	

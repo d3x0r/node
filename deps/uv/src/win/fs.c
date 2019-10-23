@@ -1855,16 +1855,13 @@ INLINE static DWORD fs__stat_impl_from_path(WCHAR* path,
     Deallocate( char*, cpath );
     return 0;
   }
-  if( sack_exists( cpath ) ) {
-    p = sack_isPath( cpath );
-    if( p )
-      statbuf->st_mode = S_IFDIR;
-    else
-      statbuf->st_mode = 0;
-    Deallocate( char*, cpath );
-    return 0;
-  } if( (p = sack_isPath( cpath )) ) {
+  if ((p = sack_isPath(cpath))) {
     statbuf->st_mode = S_IFDIR;
+    Deallocate(char*, cpath);
+    return 0;
+  }
+  if (sack_exists(cpath)) {
+    statbuf->st_mode = S_IFREG;
     Deallocate( char*, cpath );
     return 0;
   }
@@ -2360,7 +2357,6 @@ static void fs__futime(uv_fs_t* req) {
 
   req->result = 0;
 }
-
 
 static void fs__link(uv_fs_t* req) {
   DWORD r = CreateHardLinkW(req->fs.info.new_pathw, req->file.pathw, NULL);

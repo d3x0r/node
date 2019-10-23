@@ -198,4 +198,16 @@ extern "C"
 	 struct sack_vfs_volume *  sack_vfs_load_volume( CTEXTSTR filepath ){
  	return sack::SACK_VFS::sack_vfs_load_volume( filepath );
 }
- 
+extern "C"
+POINTER OpenSpace ( CTEXTSTR pWhat, CTEXTSTR pWhere, size_t *dwSize ){
+	return sack::memory::OpenSpace( pWhat, pWhere, dwSize );
+}
+
+extern "C"
+struct sack_vfs_volume * sack_vfs_load_crypt_volume( CTEXTSTR filepath, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey ){
+	return sack::SACK_VFS::sack_vfs_load_crypt_volume( filepath, version, userkey, devkey );
+}
+extern "C"
+struct sack_vfs_volume * sack_vfs_use_crypt_volume( POINTER filemem, size_t size, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey ){
+	return sack::SACK_VFS::sack_vfs_use_crypt_volume( filemem, size, version, userkey, devkey );
+}

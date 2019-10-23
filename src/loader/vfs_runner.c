@@ -3,19 +3,20 @@
 #include "memory_dll_loader.h"
 #include "app-signature.h"
 
-//#define DEBUG_LIBRARY_LOADING
+#define DEBUG_LIBRARY_LOADING
 
 static struct vfs_runner_local
 {
+	char** argv;
 	struct file_system_interface *fsi;
 	struct file_system_mounted_interface *rom;
 	struct file_system_mounted_interface *ram;
 	int(WINAPI*entry_point)(struct volume* (CPROC *load)( CTEXTSTR filepath, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey ),void (CPROC*unload)(struct volume *), const char *version );
-	struct volume* resource_fs;
-	struct volume* core_fs;
-	struct volume* user_fs;
-	struct volume* user_mirror_fs;
-	struct volume* rom_fs;
+	struct sack_vfs_volume* resource_fs;
+	struct sack_vfs_volume* core_fs;
+	struct sack_vfs_volume* user_fs;
+	struct sack_vfs_volume* user_mirror_fs;
+	struct sack_vfs_volume* rom_fs;
 	struct file_system_mounted_interface *resource_mount;
 	struct file_system_mounted_interface *user_mount;
 	struct file_system_mounted_interface *user_mirror_mount;
@@ -68,7 +69,7 @@ static LOGICAL CPROC LoadLibraryDependant( CTEXTSTR name )
 #endif
 			MakePath( path );
 			snprintf( tmpnam, 256, "%s/%s", path, name );
-			end = pathrchr( tmpnam );
+			end = (TEXTSTR)pathrchr( tmpnam );
 			if( end ) {
 				end[0] = 0;
 				MakePath( tmpnam );
@@ -136,6 +137,45 @@ static LOGICAL CPROC LoadLibraryDependant( CTEXTSTR name )
 	return FALSE;
 }
 
+LOGICAL LoadAttachedFreeload( char **argv ) {
+
+	size_t sz = 0;
+	POINTER memory;
+	POINTER freeload;
+	{
+		uint32_t startTick = GetTickCount();
+		do {
+			memory = OpenSpace( NULL, argv[0], (uintptr_t*)&sz );
+			if( !memory ) {
+				lprintf( "Failed to open memory?" );
+				WakeableSleep( 250 );
+			}
+		} while( !memory && ( ( GetTickCount() - startTick ) < 5000 ) );
+	}
+	if( memory == NULL )
+	{
+		MessageBox( NULL, "Please Launch with full path", "Startup Error", MB_OK );
+		return FALSE;
+	}
+	
+	freeload = GetExtraData( memory );
+//	lprintf( "extra is %d(%08x)\n", vfs_memory, vfs_memory );
+	l.rom_fs = sack_vfs_use_crypt_volume( memory, sz,0, NULL, NULL );//((uint8_t*)freeload - 4096), "nodeChecksum?" )
+
+	if( !l.rom_fs ) {
+		//printf( "no rom fs; this will abort entry point. %s %s\n", STRSYM(CMAKE_BUILD_TYPE), STRSYM(CPACK_PACKAGE_VERSION_PATCH) );
+		return FALSE;
+	}
+	/*
+	if( StrCmp( sack_vfs_get_signature( l.rom_fs ), app_signature ) ) {
+		printf( "Signature mismatch; this will abort entry point.\n" );
+		return;
+	}
+	*/
+	return TRUE;
+
+}
+
 PRIORITY_PRELOAD( XSaneWinMain, DEFAULT_PRELOAD_PRIORITY + 20 )//( argc, argv )
 {
 #ifdef ALT_VFS_NAME
@@ -150,27 +190,24 @@ PRIORITY_PRELOAD( XSaneWinMain, DEFAULT_PRELOAD_PRIORITY + 20 )//( argc, argv )
 
 	lprintf( "Open Core FS Log" );
 
-#ifdef _WIN32
+#if 0
+#  ifdef _WIN32
 	if( !LoadLibrary( "application.node" ) ) {
 			
 	}
-#else
+#  else
 	dlopen( "./application.node", 0 );
+#  endif
 #endif
 
 	{
-		l.rom_fs = sack_vfs_load_volume( "node.vfs",0 );
-		printf( "loaded vol:%p\n", l.rom_fs );
-		if( !l.rom_fs ) {
-			//l.rom_fs = appload1( CMAKE_BUILD_TYPE, CPACK_PACKAGE_VERSION_PATCH );
-		}
-	}
-	{
 		uint32_t startTick = GetTickCount();
 		do {
-			l.rom = sack_mount_filesystem( "self", l.fsi, 900, (uintptr_t)l.rom_fs, FALSE );
+			if( sack_exists( "node.vfs" ) ) l.rom_fs = sack_vfs_load_volume( "node.vfs" );
+			if( !l.rom_fs ) if( !LoadAttachedFreeload( l.argv ) ) break;
+			if( l.rom_fs ) l.rom = sack_mount_filesystem( "self", l.fsi, 900, (uintptr_t)l.rom_fs, FALSE );
 			if( !l.rom ) {
-				lprintf( "Failed to get rom?" );
+				//lprintf( "Failed to get rom?" );
 				WakeableSleep( 250 );
 			}
 		} while( !l.rom && ( (GetTickCount() - startTick) < 2000 ) );
@@ -178,8 +215,9 @@ PRIORITY_PRELOAD( XSaneWinMain, DEFAULT_PRELOAD_PRIORITY + 20 )//( argc, argv )
 }
 
 
-void premain( void )
+void premain( char** argv )
 {
+	l.argv = argv;
 	InvokeDeadstart();
 }
 

@@ -27,7 +27,7 @@
 #include <VersionHelpers.h>
 #include <WinError.h>
 
-extern "C" void premain( void );
+extern "C" void premain( char** argv );
 
 int wmain(int argc, wchar_t* wargv[]) {
   if (!IsWindows7OrGreater()) {
@@ -72,7 +72,7 @@ int wmain(int argc, wchar_t* wargv[]) {
   argv[argc] = nullptr;
   // Now that conversion is done, we can finally start.
   {
-    premain();
+    premain( argv );
   }
 
   return node::Start(argc, argv);

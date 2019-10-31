@@ -137,6 +137,209 @@
       ],
     }],
 
+    [ 'node_shared_jpeg=="false"', {
+      'dependencies': [ 'deps/jpeg-9/jpeg.gyp:jpeg' ],
+      'conditions': [
+        [ 'force_load=="true"', {
+          'xcode_settings': {
+            'OTHER_LDFLAGS': [
+              '-Wl,-force_load,<(PRODUCT_DIR)/<(STATIC_LIB_PREFIX)jpeg-9<(STATIC_LIB_SUFFIX)',
+            ],
+          },
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'AdditionalOptions': [
+                '/WHOLEARCHIVE:jpeg<(STATIC_LIB_SUFFIX)',
+              ],
+            },
+          },
+          'conditions': [
+            ['OS!="aix" and node_shared=="false"', {
+              'ldflags': [
+                '-Wl,--whole-archive',
+                '<(obj_dir)/deps/jpeg-9/<(STATIC_LIB_PREFIX)jpeg-9<(STATIC_LIB_SUFFIX)',
+                '-Wl,--no-whole-archive',
+              ],
+            }],
+          ],
+        }],
+      ],
+    }],
+
+    [ 'node_shared_freetype=="false"', {
+      'dependencies': [ 'deps/freetype/freetype.gyp:freetype' ],
+      'conditions': [
+        [ 'force_load=="true"', {
+          'xcode_settings': {
+            'OTHER_LDFLAGS': [
+              '-Wl,-force_load,<(PRODUCT_DIR)/<(STATIC_LIB_PREFIX)freetype<(STATIC_LIB_SUFFIX)',
+            ],
+          },
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'AdditionalOptions': [
+                '/WHOLEARCHIVE:freetype<(STATIC_LIB_SUFFIX)',
+              ],
+            },
+          },
+          'conditions': [
+            ['OS!="aix" and node_shared=="false"', {
+              'ldflags': [
+                '-Wl,--whole-archive',
+                '<(obj_dir)/deps/freetype/<(STATIC_LIB_PREFIX)freetype<(STATIC_LIB_SUFFIX)',
+                '-Wl,--no-whole-archive',
+              ],
+            }],
+          ],
+        }],
+      ],
+    }],
+
+    [ 'node_shared_png=="false"', {
+      'dependencies': [ 'deps/png/png.gyp:png' ],
+      'conditions': [
+        [ 'force_load=="true"', {
+          'xcode_settings': {
+            'OTHER_LDFLAGS': [
+              '-Wl,-force_load,<(PRODUCT_DIR)/<(STATIC_LIB_PREFIX)png<(STATIC_LIB_SUFFIX)',
+            ],
+          },
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'AdditionalOptions': [
+                '/WHOLEARCHIVE:png<(STATIC_LIB_SUFFIX)',
+              ],
+            },
+          },
+          'conditions': [
+            ['OS!="aix" and node_shared=="false"', {
+              'ldflags': [
+                '-Wl,--whole-archive',
+                '<(obj_dir)/deps/png/<(STATIC_LIB_PREFIX)png<(STATIC_LIB_SUFFIX)',
+                '-Wl,--no-whole-archive',
+              ],
+            }],
+          ],
+        }],
+      ],
+    }],
+
+    [ 'node_shared_genx=="false"', {
+      'dependencies': [ 'deps/genx/genx.gyp:genx' ],
+      'conditions': [
+        [ 'force_load=="true"', {
+          'xcode_settings': {
+            'OTHER_LDFLAGS': [
+              '-Wl,-force_load,<(PRODUCT_DIR)/<(STATIC_LIB_PREFIX)genx<(STATIC_LIB_SUFFIX)',
+            ],
+          },
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'AdditionalOptions': [
+                '/WHOLEARCHIVE:genx<(STATIC_LIB_SUFFIX)',
+              ],
+            },
+          },
+          'conditions': [
+            ['OS!="aix" and node_shared=="false"', {
+              'ldflags': [
+                '-Wl,--whole-archive',
+                '<(obj_dir)/deps/genx/<(STATIC_LIB_PREFIX)genx<(STATIC_LIB_SUFFIX)',
+                '-Wl,--no-whole-archive',
+              ],
+            }],
+          ],
+        }],
+      ],
+    }],
+
+    [ 'node_shared_sexpat=="false"', {
+      'dependencies': [ 'deps/sexpat/sexpat.gyp:sexpat' ],
+      'conditions': [
+        [ 'force_load=="true"', {
+          'xcode_settings': {
+            'OTHER_LDFLAGS': [
+              '-Wl,-force_load,<(PRODUCT_DIR)/<(STATIC_LIB_PREFIX)sexpat<(STATIC_LIB_SUFFIX)',
+            ],
+          },
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'AdditionalOptions': [
+                '/WHOLEARCHIVE:sexpat<(STATIC_LIB_SUFFIX)',
+              ],
+            },
+          },
+          'conditions': [
+            ['OS!="aix" and node_shared=="false"', {
+              'ldflags': [
+                '-Wl,--whole-archive',
+                '<(obj_dir)/deps/sexpat/<(STATIC_LIB_PREFIX)sexpat<(STATIC_LIB_SUFFIX)',
+                '-Wl,--no-whole-archive',
+              ],
+            }],
+          ],
+        }],
+      ],
+    }],
+
+    [ 'node_shared_sack=="false"', {
+      'dependencies': [ 'deps/sack/sack.gyp:sack' ],
+      'conditions': [
+        [ 'force_load=="true"', {
+          'xcode_settings': {
+            'OTHER_LDFLAGS': [
+              '-Wl,-force_load,<(PRODUCT_DIR)/<(STATIC_LIB_PREFIX)sack<(STATIC_LIB_SUFFIX)',
+            ],
+          },
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'AdditionalOptions': [
+                '/WHOLEARCHIVE:sack<(STATIC_LIB_SUFFIX)',
+              ],
+            },
+          },
+          'conditions': [
+            ['OS!="aix" and node_shared=="false"', {
+              'ldflags': [
+                '-Wl,--whole-archive',
+                '<(obj_dir)/deps/sack/<(STATIC_LIB_PREFIX)sack<(STATIC_LIB_SUFFIX)',
+                '-Wl,--no-whole-archive',
+              ],
+            }],
+          ],
+        }],
+      ],
+    }],
+
+    [ 'node_shared_glew=="false"', {
+      'dependencies': [ 'deps/glew/glew.gyp:glew' ],
+      'conditions': [
+        [ 'force_load=="true"', {
+          'xcode_settings': {
+            'OTHER_LDFLAGS': [
+              '-Wl,-force_load,<(PRODUCT_DIR)/<(STATIC_LIB_PREFIX)glew<(STATIC_LIB_SUFFIX)',
+            ],
+          },
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'AdditionalOptions': [
+                '/WHOLEARCHIVE:glew<(STATIC_LIB_SUFFIX)',
+              ],
+            },
+          },
+          'conditions': [
+            ['OS!="aix" and node_shared=="false"', {
+              'ldflags': [
+                '-Wl,--whole-archive',
+                '<(obj_dir)/deps/glew/<(STATIC_LIB_PREFIX)glew<(STATIC_LIB_SUFFIX)',
+                '-Wl,--no-whole-archive',
+              ],
+            }],
+          ],
+        }],
+      ],
+    }],
+
     [ 'node_shared_http_parser=="false"', {
       'dependencies': [
         'deps/http_parser/http_parser.gyp:http_parser',

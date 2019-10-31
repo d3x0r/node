@@ -3,7 +3,7 @@
 #include "memory_dll_loader.h"
 #include "app-signature.h"
 
-#define DEBUG_LIBRARY_LOADING
+//#define DEBUG_LIBRARY_LOADING
 
 static struct vfs_runner_local
 {

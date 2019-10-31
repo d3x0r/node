@@ -216,9 +216,9 @@ static void asyncmsg( uv_async_t* handle ) {
 					} else
 						object = Local<Object>::New( isolate, mo );
 
-					object->Set( String::NewFromUtf8( isolate, "x" ), Number::New( isolate, evt->data.mouse.x ) );
-					object->Set( String::NewFromUtf8( isolate, "y" ), Number::New( isolate, evt->data.mouse.y ) );
-					object->Set( String::NewFromUtf8( isolate, "b" ), Number::New( isolate, evt->data.mouse.b ) );
+					object->Set( context, localStringExternal( isolate, "x" ), Number::New( isolate, evt->data.mouse.x ) );
+					object->Set( context, localStringExternal( isolate, "y" ), Number::New( isolate, evt->data.mouse.y ) );
+					object->Set( context, localStringExternal( isolate, "b" ), Number::New( isolate, evt->data.mouse.b ) );
 					{
 						Local<Value> _argv[] = { is->psvData.Get( isolate ), object };
 						argv = _argv;
@@ -303,7 +303,7 @@ static void configConvertArgs( arg_list args, Local<Value> **ppargv, int *argc )
 		case CONFIG_ARG_STRING:
 			{
 				PARAM( args, CTEXTSTR, string );
-				argResult[n - nBias] = String::NewFromUtf8( isolate, string );
+				argResult[n - nBias] = localStringExternal( isolate, string );
 				//result->Set( n-nBias, String::NewFromUtf8( isolate, string ) );
 			}
 			break;
@@ -393,7 +393,7 @@ void InterShellObject::Init( Local<Object> exports ) {
 	Local<FunctionTemplate> intershellTemplate;
 	// Prepare constructor template
 	intershellTemplate = FunctionTemplate::New( isolate, NewApplication );
-	intershellTemplate->SetClassName( String::NewFromUtf8( isolate, "sack.InterShell" ) );
+	intershellTemplate->SetClassName( localStringExternal( isolate, "sack.InterShell" ) );
 	intershellTemplate->InstanceTemplate()->SetInternalFieldCount( 1 );  // have to be 1 internal for wrap
 
 	// Prototype
@@ -418,7 +418,7 @@ void InterShellObject::Init( Local<Object> exports ) {
 	Local<FunctionTemplate> configTemplate;
 	// Prepare constructor template
 	configTemplate = FunctionTemplate::New( isolate, NewConfiguration );
-	configTemplate->SetClassName( String::NewFromUtf8( isolate, "sack.Configuration" ) );
+	configTemplate->SetClassName( localStringExternal( isolate, "sack.Configuration" ) );
 	configTemplate->InstanceTemplate()->SetInternalFieldCount( 1 );  // have to be 1 internal for wrap
 
 	// Prototype
@@ -435,7 +435,7 @@ void InterShellObject::Init( Local<Object> exports ) {
 	Local<FunctionTemplate> buttonTemplate;
 	// Prepare constructor template
 	buttonTemplate = FunctionTemplate::New( isolate, NewButton );
-	buttonTemplate->SetClassName( String::NewFromUtf8( isolate, "sack.InterShell.Button" ) );
+	buttonTemplate->SetClassName( localStringExternal( isolate, "sack.InterShell.Button" ) );
 	buttonTemplate->InstanceTemplate()->SetInternalFieldCount( 1 );  // have to add 1 implicit constructor.
 
 	// Prototype
@@ -452,7 +452,7 @@ void InterShellObject::Init( Local<Object> exports ) {
 	Local<FunctionTemplate> buttonInstanceTemplate;
 	// Prepare constructor template
 	buttonInstanceTemplate = FunctionTemplate::New( isolate, is_control::NewControlInstance );
-	buttonInstanceTemplate->SetClassName( String::NewFromUtf8( isolate, "sack.InterShell.Button.instance" ) );
+	buttonInstanceTemplate->SetClassName( localStringExternal( isolate, "sack.InterShell.Button.instance" ) );
 	buttonInstanceTemplate->InstanceTemplate()->SetInternalFieldCount( 1 );  // needs to be 1 for wrap
 
 	 // Prototype
@@ -468,7 +468,7 @@ void InterShellObject::Init( Local<Object> exports ) {
 	Local<FunctionTemplate> controlTemplate;
 	// Prepare constructor template
 	controlTemplate = FunctionTemplate::New( isolate, NewControl );
-	controlTemplate->SetClassName( String::NewFromUtf8( isolate, "sack.InterShell.Control" ) );
+	controlTemplate->SetClassName( localStringExternal( isolate, "sack.InterShell.Control" ) );
 	controlTemplate->InstanceTemplate()->SetInternalFieldCount( 1 );  // needs to be 1 for wrap
 
 	 // Prototype
@@ -481,7 +481,7 @@ void InterShellObject::Init( Local<Object> exports ) {
 	Local<FunctionTemplate> controlInstanceTemplate;
 	// Prepare constructor template
 	controlInstanceTemplate = FunctionTemplate::New( isolate, is_control::NewControlInstance );
-	controlInstanceTemplate->SetClassName( String::NewFromUtf8( isolate, "sack.InterShell.control.instance" ) );
+	controlInstanceTemplate->SetClassName( localStringExternal( isolate, "sack.InterShell.control.instance" ) );
 	controlInstanceTemplate->InstanceTemplate()->SetInternalFieldCount( 1 );  // needs to be 1 for wrap
 																			 // Prototype
 	NODE_SET_PROTOTYPE_METHOD( controlInstanceTemplate, "setTitle", onCreateControl );
@@ -493,7 +493,7 @@ void InterShellObject::Init( Local<Object> exports ) {
 	Local<FunctionTemplate> customControlTemplate;
 	// Prepare constructor template
 	customControlTemplate = FunctionTemplate::New( isolate, NewCustomControl );
-	customControlTemplate->SetClassName( String::NewFromUtf8( isolate, "sack.InterShell.CustomControl" ) );
+	customControlTemplate->SetClassName( localStringExternal( isolate, "sack.InterShell.CustomControl" ) );
 	customControlTemplate->InstanceTemplate()->SetInternalFieldCount( 1 ); // needs to be 1 for wrap
 
 																		   // Prototype
@@ -510,7 +510,7 @@ void InterShellObject::Init( Local<Object> exports ) {
 	Local<FunctionTemplate> customControlInstanceTemplate;
 	// Prepare constructor template
 	customControlInstanceTemplate = FunctionTemplate::New( isolate, is_control::NewControlInstance );
-	customControlInstanceTemplate->SetClassName( String::NewFromUtf8( isolate, "sack.InterShell.CustomControl.instance" ) );
+	customControlInstanceTemplate->SetClassName( localStringExternal( isolate, "sack.InterShell.CustomControl.instance" ) );
 	customControlInstanceTemplate->InstanceTemplate()->SetInternalFieldCount( 1 ); // needs to be 1 for wrap
 
 																		   // Prototype
@@ -664,7 +664,7 @@ void InterShellObject::NewControl( const FunctionCallbackInfo<Value>& args ) {
 
 		{
 			if( opts->Has( context, optName = strings->controlRegistrationString->Get( isolate ) ).ToChecked() ) {
-				Local<Object> registration = opts->Get( optName )->ToObject(context).ToLocalChecked();
+				Local<Object> registration = opts->Get( context, optName ).ToLocalChecked()->ToObject(context).ToLocalChecked();
 				RegistrationObject *regobj = ObjectWrap::Unwrap<RegistrationObject>( registration );
 				obj->registrationObject.Reset( isolate, registration );
 				obj->registration = regobj;
@@ -672,13 +672,13 @@ void InterShellObject::NewControl( const FunctionCallbackInfo<Value>& args ) {
 			defineOnQueryControl( name );
 
 			if( opts->Has( context, optName = strings->createString->Get( isolate ) ).ToChecked() )
-				obj->cbCreate.Reset( isolate, Local<Function>::Cast( opts->Get( optName ) ) );
+				obj->cbCreate.Reset( isolate, Local<Function>::Cast( opts->Get( context, optName ).ToLocalChecked() ) );
 			if( opts->Has( context, optName = strings->destroyString->Get( isolate ) ).ToChecked() )
-				obj->cbDestroy.Reset( isolate, Local<Function>::Cast( opts->Get( optName ) ) );
+				obj->cbDestroy.Reset( isolate, Local<Function>::Cast( opts->Get( context, optName ).ToLocalChecked() ) );
 			if( opts->Has( context, optName = strings->mouseString->Get( isolate ) ).ToChecked() )
-				obj->cbMouse.Reset( isolate, Local<Function>::Cast( opts->Get( optName ) ) );
+				obj->cbMouse.Reset( isolate, Local<Function>::Cast( opts->Get( context, optName ).ToLocalChecked() ) );
 			if( opts->Has( context, optName = strings->drawString->Get( isolate ) ).ToChecked() )
-				obj->cbDraw.Reset( isolate, Local<Function>::Cast( opts->Get( optName ) ) );
+				obj->cbDraw.Reset( isolate, Local<Function>::Cast( opts->Get( context, optName ).ToLocalChecked() ) );
 		}
 
 			Local<Object> _this = args.This();

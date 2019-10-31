@@ -1,9 +1,9 @@
 
 #include "global.h"
 
-#ifdef INCLUDE_GUI
+//#ifdef INCLUDE_GUI
 void editOptions( const v8::FunctionCallbackInfo<Value>& args );
-#endif
+//#endif
 
 struct SqlObjectUserFunction {
 	class SqlObject *sql;
@@ -207,9 +207,9 @@ void SqlObjectInit( Local<Object> exports ) {
 	SET_READONLY_METHOD(sqlfunc, "eo", SqlObject::enumOptionNodesInternal );
 	SET_READONLY_METHOD(sqlfunc, "op", SqlObject::optionInternal );
 	SET_READONLY_METHOD(sqlfunc, "so", SqlObject::setOptionInternal );
-#ifdef INCLUDE_GUI
+//#ifdef INCLUDE_GUI
 	SET_READONLY_METHOD(sqlfunc, "optionEditor", editOptions );
-#endif
+//#endif
 
 	SET( exports, "Sqlite", sqlfunc );
 }
@@ -1705,10 +1705,11 @@ void SqlObject::aggregateFunction( const v8::FunctionCallbackInfo<Value>& args )
 	}
 }
 
-#ifdef INCLUDE_GUI
 static uintptr_t RunEditor( PTHREAD thread ) {
 	int (*EditOptions)( PODBC odbc, PSI_CONTROL parent, LOGICAL wait );
+	extern void enableEventLoop( void );
 	extern void disableEventLoop( void );
+	enableEventLoop();
 	EditOptions = (int(*)(PODBC,PSI_CONTROL,LOGICAL))GetThreadParam( thread );
 	EditOptions( NULL, NULL, TRUE );
 	disableEventLoop();
@@ -1716,18 +1717,20 @@ static uintptr_t RunEditor( PTHREAD thread ) {
 }
 
 void editOptions( const v8::FunctionCallbackInfo<Value>& args ){
-	int (*EditOptions)( PODBC odbc, PSI_CONTROL parent, LOGICAL wait );
-	extern void enableEventLoop( void );
+  extern int EditOptionsEx(PODBC odbc, PSI_CONTROL parent, LOGICAL wait);
+  int (*dynEditOptions)(PODBC odbc, PSI_CONTROL parent, LOGICAL wait);
+#ifdef check_dynamic_plugin
 #ifdef WIN32
 	LoadFunction( "bag.psi.dll", NULL );
 #else
 	LoadFunction( "libbag.psi.so", NULL );
 #endif
-	EditOptions = (int(*)( PODBC, PSI_CONTROL,LOGICAL))LoadFunction( "EditOptions.plugin", "EditOptionsEx" );
-	if( EditOptions ) {
-		enableEventLoop();
-		ThreadTo( RunEditor, (uintptr_t)EditOptions );
+	dynEditOptions = (int(*)( PODBC, PSI_CONTROL,LOGICAL))LoadFunction( "EditOptions.plugin", "EditOptionsEx" );
+#else
+  dynEditOptions = EditOptionsEx;
+#endif
+	if( dynEditOptions ) {
+		ThreadTo( RunEditor, (uintptr_t)dynEditOptions );
 	} else
 		lprintf( "Failed to load editor..." );
 }
-#endif

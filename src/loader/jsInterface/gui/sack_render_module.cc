@@ -43,16 +43,16 @@ static struct optionStrings* getStrings( Isolate* isolate ) {
 	if( !check ) {
 		check = NewArray( struct optionStrings, 1 );
 		check->isolate = isolate;
-#define makeString(a,b) check->a##String = new Eternal<String>( isolate, String::NewFromUtf8( isolate, b ) );
-		check->nameString = new Eternal<String>( isolate, String::NewFromUtf8( isolate, "name" ) );
-		check->widthString = new Eternal<String>( isolate, String::NewFromUtf8( isolate, "width" ) );
-		check->heightString = new Eternal<String>( isolate, String::NewFromUtf8( isolate, "height" ) );
-		check->borderString = new Eternal<String>( isolate, String::NewFromUtf8( isolate, "border" ) );
-		check->createString = new Eternal<String>( isolate, String::NewFromUtf8( isolate, "create" ) );
-		check->mouseString = new Eternal<String>( isolate, String::NewFromUtf8( isolate, "mouse" ) );
-		check->drawString = new Eternal<String>( isolate, String::NewFromUtf8( isolate, "draw" ) );
-		check->keyString = new Eternal<String>( isolate, String::NewFromUtf8( isolate, "key" ) );
-		check->destroyString = new Eternal<String>( isolate, String::NewFromUtf8( isolate, "destroy" ) );
+#define makeString(a,b) check->a##String = new Eternal<String>( isolate, localStringExternal( isolate, b ) );
+		check->nameString = new Eternal<String>( isolate, localStringExternal( isolate, "name" ) );
+		check->widthString = new Eternal<String>( isolate, localStringExternal( isolate, "width" ) );
+		check->heightString = new Eternal<String>( isolate, localStringExternal( isolate, "height" ) );
+		check->borderString = new Eternal<String>( isolate, localStringExternal( isolate, "border" ) );
+		check->createString = new Eternal<String>( isolate, localStringExternal( isolate, "create" ) );
+		check->mouseString = new Eternal<String>( isolate, localStringExternal( isolate, "mouse" ) );
+		check->drawString = new Eternal<String>( isolate, localStringExternal( isolate, "draw" ) );
+		check->keyString = new Eternal<String>( isolate, localStringExternal( isolate, "key" ) );
+		check->destroyString = new Eternal<String>( isolate, localStringExternal( isolate, "destroy" ) );
 		makeString( x, "x" );
 		makeString( y, "y" );
 		makeString( w, "width" );
@@ -66,7 +66,7 @@ static struct optionStrings* getStrings( Isolate* isolate ) {
 		makeString( anchors, "anchors" );
 		makeString( definesColors, "definesColors" );
 
-		//check->String = new Eternal<String>( isolate, String::NewFromUtf8( isolate, "" ) );
+		//check->String = new Eternal<String>( isolate, localStringExternal( isolate, "" ) );
 		AddLink( &strings, check );
 	}
 	return check;
@@ -76,7 +76,7 @@ static struct optionStrings* getStrings( Isolate* isolate ) {
 static Local<Value> ProcessEvent( Isolate* isolate, struct event *evt, RenderObject *r ) {
 	//Local<Object> object = Object::New( isolate );
 	Local<Object> object;
-
+  Local<Context> context = isolate->GetCurrentContext();
 
 	switch( evt->type ) {
 	case Event_Render_Mouse:
@@ -89,9 +89,9 @@ static Local<Value> ProcessEvent( Isolate* isolate, struct event *evt, RenderObj
 			else
 				object = Local<Object>::New( isolate, mo );
 
-			object->Set( String::NewFromUtf8( isolate, "x" ), Number::New( isolate, evt->data.mouse.x ) );
-			object->Set( String::NewFromUtf8( isolate, "y" ), Number::New( isolate, evt->data.mouse.y ) );
-			object->Set( String::NewFromUtf8( isolate, "b" ), Number::New( isolate, evt->data.mouse.b ) );
+			object->Set( context, localStringExternal( isolate, "x" ), Number::New( isolate, evt->data.mouse.x ) );
+			object->Set( context, localStringExternal( isolate, "y" ), Number::New( isolate, evt->data.mouse.y ) );
+			object->Set( context, localStringExternal( isolate, "b" ), Number::New( isolate, evt->data.mouse.b ) );
 		}
 		break;
 	case Event_Render_Draw:
@@ -163,7 +163,7 @@ void RenderObject::Init( Local<Object> exports ) {
 
 		// Prepare constructor template
 		renderTemplate = FunctionTemplate::New( isolate, New );
-		renderTemplate->SetClassName( String::NewFromUtf8( isolate, "sack.Renderer" ) );
+		renderTemplate->SetClassName( localStringExternal( isolate, "sack.Renderer" ) );
 		renderTemplate->InstanceTemplate()->SetInternalFieldCount( 1 ); /* one internal for wrap */
 
 
@@ -180,15 +180,15 @@ void RenderObject::Init( Local<Object> exports ) {
 		NODE_SET_PROTOTYPE_METHOD( renderTemplate, "close", RenderObject::close );
 		NODE_SET_PROTOTYPE_METHOD( renderTemplate, "on", RenderObject::on );
 
-		renderTemplate->PrototypeTemplate()->SetAccessorProperty( String::NewFromUtf8( isolate, "size" )
+		renderTemplate->PrototypeTemplate()->SetAccessorProperty( localStringExternal( isolate, "size" )
 			, FunctionTemplate::New( isolate, RenderObject::getCoordinate, Integer::New( isolate, 12 ) )
 			, FunctionTemplate::New( isolate, RenderObject::setCoordinate, Integer::New( isolate, 11 ) )
 			, DontDelete );
-		renderTemplate->PrototypeTemplate()->SetAccessorProperty( String::NewFromUtf8( isolate, "position" )
+		renderTemplate->PrototypeTemplate()->SetAccessorProperty( localStringExternal( isolate, "position" )
 			, FunctionTemplate::New( isolate, RenderObject::getCoordinate, Integer::New( isolate, 12 ) )
 			, FunctionTemplate::New( isolate, RenderObject::setCoordinate, Integer::New( isolate, 10 ) )
 			, DontDelete );
-		renderTemplate->PrototypeTemplate()->SetAccessorProperty( String::NewFromUtf8( isolate, "layout" )
+		renderTemplate->PrototypeTemplate()->SetAccessorProperty( localStringExternal( isolate, "layout" )
 			, FunctionTemplate::New( isolate, RenderObject::getCoordinate, Integer::New( isolate, 12 ) )
 			, FunctionTemplate::New( isolate, RenderObject::setCoordinate, Integer::New( isolate, 12 ) )
 			, DontDelete );
@@ -304,18 +304,18 @@ void RenderObject::getCoordinate( const FunctionCallbackInfo<Value>& args ) {
 	GetDisplayPosition( me->r, &x, &y, &w, &h );
 	switch( coord ) {
 	case 10:
-		o->Set( strings->xString->Get( isolate ), Integer::New( isolate, x ) );
-		o->Set( strings->yString->Get( isolate ), Integer::New( isolate, y ) );
+		o->Set( context, strings->xString->Get( isolate ), Integer::New( isolate, x ) );
+		o->Set( context, strings->yString->Get( isolate ), Integer::New( isolate, y ) );
 		break;
 	case 11:
-		o->Set( strings->wString->Get( isolate ), Integer::New( isolate, w ) );
-		o->Set( strings->hString->Get( isolate ), Integer::New( isolate, h ) );
+		o->Set( context, strings->wString->Get( isolate ), Integer::New( isolate, w ) );
+		o->Set( context, strings->hString->Get( isolate ), Integer::New( isolate, h ) );
 		break;
 	case 12:
-		o->Set( strings->xString->Get( isolate ), Integer::New( isolate, x ) );
-		o->Set( strings->yString->Get( isolate ), Integer::New( isolate, y ) );
-		o->Set( strings->wString->Get( isolate ), Integer::New( isolate, w ) );
-		o->Set( strings->hString->Get( isolate ), Integer::New( isolate, h ) );
+		o->Set( context, strings->xString->Get( isolate ), Integer::New( isolate, x ) );
+		o->Set( context, strings->yString->Get( isolate ), Integer::New( isolate, y ) );
+		o->Set( context, strings->wString->Get( isolate ), Integer::New( isolate, w ) );
+		o->Set( context, strings->hString->Get( isolate ), Integer::New( isolate, h ) );
 		break;
 	}
 	args.GetReturnValue().Set( o );
@@ -333,20 +333,20 @@ void RenderObject::setCoordinate( const FunctionCallbackInfo<Value>& args ) {
 		uint32_t w, h;
 		switch( coord ) {
 		case 10:
-			x = (int32_t)o->Get( strings->xString->Get( isolate ) )->IntegerValue( context ).ToChecked();
-			y = (int32_t)o->Get( strings->yString->Get( isolate ) )->IntegerValue( context ).ToChecked();
+			x = (int32_t)o->Get( context, strings->xString->Get( isolate ) ).ToLocalChecked()->IntegerValue( context ).ToChecked();
+			y = (int32_t)o->Get( context, strings->yString->Get( isolate ) ).ToLocalChecked()->IntegerValue( context ).ToChecked();
 			MoveDisplay( me->r, x, y );
 			break;
 		case 11:
-			w = (uint32_t)o->Get( strings->wString->Get( isolate ) )->IntegerValue( context ).ToChecked();
-			h = (uint32_t)o->Get( strings->hString->Get( isolate ) )->IntegerValue( context ).ToChecked();
+			w = (uint32_t)o->Get( context, strings->wString->Get( isolate ) ).ToLocalChecked()->IntegerValue( context ).ToChecked();
+			h = (uint32_t)o->Get( context, strings->hString->Get( isolate ) ).ToLocalChecked()->IntegerValue( context ).ToChecked();
 			SizeDisplay( me->r, w, h );
 			break;
 		case 12:
-			x = (int32_t)o->Get( strings->xString->Get( isolate ) )->IntegerValue( context ).ToChecked();
-			y = (int32_t)o->Get( strings->yString->Get( isolate ) )->IntegerValue( context ).ToChecked();
-			w = (uint32_t)o->Get( strings->wString->Get( isolate ) )->IntegerValue( context ).ToChecked();
-			h = (uint32_t)o->Get( strings->hString->Get( isolate ) )->IntegerValue( context ).ToChecked();
+			x = (int32_t)o->Get( context, strings->xString->Get( isolate ) ).ToLocalChecked()->IntegerValue( context ).ToChecked();
+			y = (int32_t)o->Get( context, strings->yString->Get( isolate ) ).ToLocalChecked()->IntegerValue( context ).ToChecked();
+			w = (uint32_t)o->Get( context, strings->wString->Get( isolate ) ).ToLocalChecked()->IntegerValue( context ).ToChecked();
+			h = (uint32_t)o->Get( context, strings->hString->Get( isolate ) ).ToLocalChecked()->IntegerValue( context ).ToChecked();
 			MoveSizeDisplay( me->r, x, y, w, h );
 			break;
 		}
@@ -406,18 +406,18 @@ void RenderObject::getDisplay( const FunctionCallbackInfo<Value>& args ) {
 	uint32_t w, h;
 	if( args.Length() < 1 ) {
 		GetDisplaySizeEx( 0, &x, &y, &w, &h );
-		result->Set( String::NewFromUtf8( isolate, "x" ), Integer::New( isolate, x ) );
-		result->Set( String::NewFromUtf8( isolate, "y" ), Integer::New( isolate, y ) );
-		result->Set( String::NewFromUtf8( isolate, "width" ), Integer::New( isolate, w ) );
-		result->Set( String::NewFromUtf8( isolate, "height" ), Integer::New( isolate, h ) );
+		result->Set( context, localStringExternal( isolate, "x" ), Integer::New( isolate, x ) );
+		result->Set( context, localStringExternal( isolate, "y" ), Integer::New( isolate, y ) );
+		result->Set( context, localStringExternal( isolate, "width" ), Integer::New( isolate, w ) );
+		result->Set( context, localStringExternal( isolate, "height" ), Integer::New( isolate, h ) );
 	}
 	else {
 		GetDisplaySizeEx( (int)args[0]->IntegerValue(context).ToChecked(), &x, &y, &w, &h );
 		{
-			result->Set( String::NewFromUtf8( isolate, "x" ), Integer::New( isolate, x ) );
-			result->Set( String::NewFromUtf8( isolate, "y" ), Integer::New( isolate, y ) );
-			result->Set( String::NewFromUtf8( isolate, "width" ), Integer::New( isolate, w ) );
-			result->Set( String::NewFromUtf8( isolate, "height" ), Integer::New( isolate, h ) );
+			result->Set( context, localStringExternal( isolate, "x" ), Integer::New( isolate, x ) );
+			result->Set( context, localStringExternal( isolate, "y" ), Integer::New( isolate, y ) );
+			result->Set( context, localStringExternal( isolate, "width" ), Integer::New( isolate, w ) );
+			result->Set( context, localStringExternal( isolate, "height" ), Integer::New( isolate, h ) );
 		}
 	}
 	args.GetReturnValue().Set( result );
@@ -498,12 +498,12 @@ void RenderObject::on( const FunctionCallbackInfo<Value>& args ) {
 	RenderObject *r = ObjectWrap::Unwrap<RenderObject>( args.This() );
 	if( !args[0]->IsString() ) {
 		isolate->ThrowException( Exception::Error(
-			String::NewFromUtf8( isolate, TranslateText( "First argument must be event name as a string." ) ) ) );
+			localStringExternal( isolate, TranslateText( "First argument must be event name as a string." ) ) ) );
 		return;
 	}
 	if( !args[1]->IsFunction() ) {
 		isolate->ThrowException( Exception::Error(
-			String::NewFromUtf8( isolate, TranslateText( "Second argument must be callback function." ) ) ) );
+			localStringExternal( isolate, TranslateText( "Second argument must be callback function." ) ) ) );
 		return;
 	}
 	Local<Function> arg1 = Local<Function>::Cast( args[1] );

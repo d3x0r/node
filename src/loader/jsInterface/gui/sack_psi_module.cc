@@ -555,7 +555,7 @@ void AddControlColors( Isolate *isolate, Local<Object> control, ControlObject *c
 
 void DeleteControlColors( Isolate *isolate, Local<Object> control, ControlObject *c ) {
 	Local<Context> context = isolate->GetCurrentContext();
-	Local<Object> colors = control->Get( localStringExternal( isolate, "color" ) )->ToObject(context).ToLocalChecked();
+	Local<Object> colors = control->Get( context, localStringExternal( isolate, "color" ) ).ToLocalChecked()->ToObject(context).ToLocalChecked();
 
 	VoidObject *v = VoidObject::Unwrap<VoidObject>( colors );
 	VoidObject::releaseSelf( v );
@@ -588,7 +588,7 @@ void ControlObject::Init( Local<Object> _exports ) {
 		SetControlImageInterface( g.pii );
 		SetControlInterface( g.pdi );
 
-		_exports->Set( localStringExternal( isolate, "PSI" ), exports );
+		_exports->Set( context, localStringExternal( isolate, "PSI" ), exports );
 		// Prepare constructor template
 		psiTemplate = FunctionTemplate::New( isolate, New );
 		frameTemplate.Reset( isolate, psiTemplate );
@@ -715,24 +715,24 @@ void ControlObject::Init( Local<Object> _exports ) {
 		SET_READONLY( controlObject, "borderAnchor", borderAnchorEnum );
 
 		Local<Array> controlTypes = Array::New( isolate );
-		controlTypes->Set( 0, localStringExternal( isolate, "Frame" ) );
-		controlTypes->Set( 1, localStringExternal( isolate, "Undefined" ) );
-		controlTypes->Set( 2, localStringExternal( isolate, "SubFrame" ) );
-		controlTypes->Set( 3, localStringExternal( isolate, "TextControl" ) );
-		controlTypes->Set( 4, localStringExternal( isolate, "Button" ) );
-		controlTypes->Set( 5, localStringExternal( isolate, "CustomDrawnButton" ) );
-		controlTypes->Set( 6, localStringExternal( isolate, "ImageButton" ) );
-		controlTypes->Set( 7, localStringExternal( isolate, "CheckButton" ) );
-		controlTypes->Set( 8, localStringExternal( isolate, "EditControl" ) );
-		controlTypes->Set( 9, localStringExternal( isolate, "Slider" ) );
-		controlTypes->Set( 10, localStringExternal( isolate, "ListBox" ) );
-		controlTypes->Set( 11, localStringExternal( isolate, "ScrollBar" ) );
-		controlTypes->Set( 12, localStringExternal( isolate, "Gridbox" ) );
-		controlTypes->Set( 13, localStringExternal( isolate, "Console" ) );
-		controlTypes->Set( 14, localStringExternal( isolate, "SheetControl" ) );
-		controlTypes->Set( 15, localStringExternal( isolate, "Combo Box" ) );
-		controlTypes->Set( 16, localStringExternal( isolate, "Basic Clock Widget" ) );
-		controlTypes->Set( 17, localStringExternal( isolate, "PSI Console" ) );
+		controlTypes->Set( context, 0, localStringExternal( isolate, "Frame" ) );
+		controlTypes->Set( context, 1, localStringExternal( isolate, "Undefined" ) );
+		controlTypes->Set( context, 2, localStringExternal( isolate, "SubFrame" ) );
+		controlTypes->Set( context, 3, localStringExternal( isolate, "TextControl" ) );
+		controlTypes->Set( context, 4, localStringExternal( isolate, "Button" ) );
+		controlTypes->Set( context, 5, localStringExternal( isolate, "CustomDrawnButton" ) );
+		controlTypes->Set( context, 6, localStringExternal( isolate, "ImageButton" ) );
+		controlTypes->Set( context, 7, localStringExternal( isolate, "CheckButton" ) );
+		controlTypes->Set( context, 8, localStringExternal( isolate, "EditControl" ) );
+		controlTypes->Set( context, 9, localStringExternal( isolate, "Slider" ) );
+		controlTypes->Set( context, 10, localStringExternal( isolate, "ListBox" ) );
+		controlTypes->Set( context, 11, localStringExternal( isolate, "ScrollBar" ) );
+		controlTypes->Set( context, 12, localStringExternal( isolate, "Gridbox" ) );
+		controlTypes->Set( context, 13, localStringExternal( isolate, "Console" ) );
+		controlTypes->Set( context, 14, localStringExternal( isolate, "SheetControl" ) );
+		controlTypes->Set( context, 15, localStringExternal( isolate, "Combo Box" ) );
+		controlTypes->Set( context, 16, localStringExternal( isolate, "Basic Clock Widget" ) );
+		controlTypes->Set( context, 17, localStringExternal( isolate, "PSI Console" ) );
 
 		SET_READONLY( controlObject, "types", controlTypes );
 
@@ -903,8 +903,8 @@ void ControlObject::getControlColor( const FunctionCallbackInfo<Value>& args ) {
 	Local<Object> object;
 	if( data->IsObject() ) {
 		Local<Object> params = data->ToObject(context).ToLocalChecked();
-		colorIndex = (int)params->Get( strings->indexString->Get( isolate ) )->IntegerValue(context).ToChecked();
-		object = params->Get( strings->objectString->Get( isolate ) )->ToObject(context).ToLocalChecked();
+		colorIndex = (int)params->Get( context, strings->indexString->Get( isolate ) ).ToLocalChecked()->IntegerValue(context).ToChecked();
+		object = params->Get( context, strings->objectString->Get( isolate ) ).ToLocalChecked()->ToObject(context).ToLocalChecked();
 	}
 	else {
 		colorIndex = (int)data->IntegerValue(context).ToChecked();
@@ -939,8 +939,8 @@ void ControlObject::setControlColor( const FunctionCallbackInfo<Value>& args ) {
 
 	if( data->IsObject() ) {
 		Local<Object> params = data->ToObject(context).ToLocalChecked();
-		colorIndex = (int)params->Get( strings->indexString->Get( isolate ) )->IntegerValue(context).ToChecked();
-		object = params->Get( strings->objectString->Get( isolate ) )->ToObject(context).ToLocalChecked();
+		colorIndex = (int)params->Get( context, strings->indexString->Get( isolate ) ).ToLocalChecked()->IntegerValue(context).ToChecked();
+		object = params->Get( context, strings->objectString->Get( isolate ) ).ToLocalChecked()->ToObject(context).ToLocalChecked();
 	}
 	else {
 		colorIndex = (int)data->IntegerValue(context).ToChecked();
@@ -1715,18 +1715,18 @@ void ControlObject::getCoordinate( const FunctionCallbackInfo<Value>&  args ) {
 	GetFrameSize( me->control, &w, &h );
 	switch( coord ) {
 	case 10:
-		o->Set( strings->xString->Get( isolate ), Integer::New( isolate, x ) );
-		o->Set( strings->yString->Get( isolate ), Integer::New( isolate, y ) );
+		o->Set( context, strings->xString->Get( isolate ), Integer::New( isolate, x ) );
+		o->Set( context, strings->yString->Get( isolate ), Integer::New( isolate, y ) );
 		break;
 	case 11:
-		o->Set( strings->wString->Get( isolate ), Integer::New( isolate, w ) );
-		o->Set( strings->hString->Get( isolate ), Integer::New( isolate, h ) );
+		o->Set( context, strings->wString->Get( isolate ), Integer::New( isolate, w ) );
+		o->Set( context, strings->hString->Get( isolate ), Integer::New( isolate, h ) );
 		break;
 	case 12:
-		o->Set( strings->xString->Get( isolate ), Integer::New( isolate, x ) );
-		o->Set( strings->yString->Get( isolate ), Integer::New( isolate, y ) );
-		o->Set( strings->wString->Get( isolate ), Integer::New( isolate, w ) );
-		o->Set( strings->hString->Get( isolate ), Integer::New( isolate, h ) );
+		o->Set( context, strings->xString->Get( isolate ), Integer::New( isolate, x ) );
+		o->Set( context, strings->yString->Get( isolate ), Integer::New( isolate, y ) );
+		o->Set( context, strings->wString->Get( isolate ), Integer::New( isolate, w ) );
+		o->Set( context, strings->hString->Get( isolate ), Integer::New( isolate, h ) );
 		break;
 	}
 	args.GetReturnValue().Set( o );
@@ -1744,20 +1744,20 @@ void ControlObject::setCoordinate( const FunctionCallbackInfo<Value>&  args ) {
 		uint32_t w, h;
 		switch( coord ) {
 		case 10:
-			x = (int32_t)o->Get( strings->xString->Get( isolate ) )->IntegerValue(context).ToChecked();
-			y = (int32_t)o->Get( strings->yString->Get( isolate ) )->IntegerValue(context).ToChecked();
+			x = (int32_t)o->Get( context, strings->xString->Get( isolate ) ).ToLocalChecked()->IntegerValue(context).ToChecked();
+			y = (int32_t)o->Get( context, strings->yString->Get( isolate ) ).ToLocalChecked()->IntegerValue(context).ToChecked();
 			MoveCommon( me->control, x, y );
 			break;
 		case 11:
-			w = (uint32_t)o->Get( strings->wString->Get( isolate ) )->IntegerValue(context).ToChecked();
-			h = (uint32_t)o->Get( strings->hString->Get( isolate ) )->IntegerValue(context).ToChecked();
+			w = (uint32_t)o->Get( context, strings->wString->Get( isolate ) ).ToLocalChecked()->IntegerValue(context).ToChecked();
+			h = (uint32_t)o->Get( context, strings->hString->Get( isolate ) ).ToLocalChecked()->IntegerValue(context).ToChecked();
 			SizeCommon( me->control,w, h );
 			break;
 		case 12:
-			x = (int32_t)o->Get( strings->xString->Get( isolate ) )->IntegerValue(context).ToChecked();
-			y = (int32_t)o->Get( strings->yString->Get( isolate ) )->IntegerValue(context).ToChecked();
-			w = (uint32_t)o->Get( strings->wString->Get( isolate ) )->IntegerValue(context).ToChecked();
-			h = (uint32_t)o->Get( strings->hString->Get( isolate ) )->IntegerValue(context).ToChecked();
+			x = (int32_t)o->Get( context, strings->xString->Get( isolate ) ).ToLocalChecked()->IntegerValue(context).ToChecked();
+			y = (int32_t)o->Get( context, strings->yString->Get( isolate ) ).ToLocalChecked()->IntegerValue(context).ToChecked();
+			w = (uint32_t)o->Get( context, strings->wString->Get( isolate ) ).ToLocalChecked()->IntegerValue(context).ToChecked();
+			h = (uint32_t)o->Get( context, strings->hString->Get( isolate ) ).ToLocalChecked()->IntegerValue(context).ToChecked();
 			MoveSizeCommon( me->control, x, y, w, h );
 			break;
 		}
@@ -1808,7 +1808,7 @@ void ControlObject::setListboxTabs( const FunctionCallbackInfo<Value>&  args ) {
 		int l = list->Length();
 		int *vals = NewArray( int, l );
 		for( n = 0; n < l; n++ ) {
-			vals[n] = (int)list->Get( n )->IntegerValue(context).ToChecked();
+			vals[n] = (int)list->Get( context,( n )).ToLocalChecked()->IntegerValue(context).ToChecked();
 		}
 		if( args.Length() > 1 ) {
 			if( args[1]->IsNumber() )
@@ -1888,12 +1888,13 @@ void ControlObject::getListboxHeader( const FunctionCallbackInfo<Value>&  args )
 
 void ControlObject::setListboxHeader( const FunctionCallbackInfo<Value>&  args ) {
 	Isolate* isolate = args.GetIsolate();
+  Local<Context> context = isolate->GetCurrentContext();
 	ControlObject *me = ObjectWrap::Unwrap<ControlObject>( args.This() );
 	String::Utf8Value text( args.GetIsolate(), args[0] );
 	int level = 0;
 	if( args.Length() > 1 ) {
 		if( me->flags.tree )
-			level = (int)args[1]->ToInteger( isolate )->Value();
+			level = (int)args[1]->ToInteger( context ).ToLocalChecked()->Value();
 	}
 	SetListboxHeaderEx( me->control, *text, level );
 }
@@ -1930,7 +1931,7 @@ void ControlObject::getListboxIsTree( const FunctionCallbackInfo<Value>& args ) 
 }
 void ControlObject::setListboxIsTree( const FunctionCallbackInfo<Value>& args ) {
 	ControlObject* me = ObjectWrap::Unwrap<ControlObject>( args.This() );
-	SetListboxIsTree( me->control, me->flags.tree = args[0]->BooleanValue( args.GetIsolate()->GetCurrentContext() ).ToChecked() );
+	SetListboxIsTree( me->control, me->flags.tree = args[0]->BooleanValue( args.GetIsolate() ) );
 }
 
 
@@ -2246,7 +2247,7 @@ static int CPROC onLoad( PSI_CONTROL pc, PTEXT params ) {
 	Local<Function> cb = Local<Function>::New( isolate, registration->cbLoadEvent );
 	Local<Value> retval = cb->Call( context, psiLocal.newControl, 0, NULL ).ToLocalChecked();
 
-	return retval->ToInt32(USE_ISOLATE_VOID(isolate))->Value();
+	return retval->ToInt32(context).ToLocalChecked()->Value();
 }
 
 static int CPROC onCreate( PSI_CONTROL pc ) {
@@ -2272,7 +2273,7 @@ static int CPROC onCreate( PSI_CONTROL pc ) {
 
 		Local<Value> retval = cb->Call( context, psiLocal.newControl, 0, NULL ).ToLocalChecked();
 
-		return retval->ToInt32( USE_ISOLATE_VOID( isolate ) )->Value();
+		return retval->ToInt32( context ).ToLocalChecked()->Value();
 	}
 
 }
@@ -2315,32 +2316,32 @@ void RegistrationObject::NewRegistration( const FunctionCallbackInfo<Value>& arg
 				Local<String> optName;
 				struct optionStrings *strings = getStrings( isolate );
 				if( opts->Has( context, optName = strings->nameString->Get( isolate ) ).ToChecked() ) {
-					String::Utf8Value name( isolate, opts->Get( optName ) );
+					String::Utf8Value name( isolate, opts->Get( context, optName ).ToLocalChecked() );
 					regOpts.name = StrDup( *name );
 				}
 				if( opts->Has( context, optName = strings->widthString->Get( isolate ) ).ToChecked() ) {
-					regOpts.width = (int)opts->Get( optName )->IntegerValue(context).ToChecked();
+					regOpts.width = (int)opts->Get( context, optName ).ToLocalChecked()->IntegerValue(context).ToChecked();
 				}
 				if( opts->Has( context, optName = strings->heightString->Get( isolate ) ).ToChecked() ) {
-					regOpts.height = (int)opts->Get( optName )->IntegerValue(context).ToChecked();
+					regOpts.height = (int)opts->Get( context, optName ).ToLocalChecked()->IntegerValue(context).ToChecked();
 				}
 				if( opts->Has( context, optName = strings->borderString->Get( isolate ) ).ToChecked() ) {
-					regOpts.default_border = (int)opts->Get( optName )->IntegerValue(context).ToChecked();
+					regOpts.default_border = (int)opts->Get( context, optName ).ToLocalChecked()->IntegerValue(context).ToChecked();
 				}
 				if( opts->Has( context, optName = strings->createString->Get( isolate ) ).ToChecked() ) {
-					regOpts.cbInitEvent = Local<Function>::Cast( opts->Get( optName ) );
+					regOpts.cbInitEvent = Local<Function>::Cast( opts->Get( context, optName ).ToLocalChecked() );
 				}
 				if( opts->Has( context, optName = strings->drawString->Get( isolate ) ).ToChecked() ) {
-					regOpts.cbDrawEvent = Local<Function>::Cast( opts->Get( optName ) );
+					regOpts.cbDrawEvent = Local<Function>::Cast( opts->Get( context, optName ).ToLocalChecked() );
 				}
 				if( opts->Has( context, optName = strings->mouseString->Get( isolate ) ).ToChecked() ) {
-					regOpts.cbMouseEvent = Local<Function>::Cast( opts->Get( optName ) );
+					regOpts.cbMouseEvent = Local<Function>::Cast( opts->Get( context, optName ).ToLocalChecked() );
 				}
 				if( opts->Has( context, optName = strings->keyString->Get( isolate ) ).ToChecked() ) {
-					regOpts.cbKeyEvent = Local<Function>::Cast( opts->Get( optName ) );
+					regOpts.cbKeyEvent = Local<Function>::Cast( opts->Get( context, optName ).ToLocalChecked() );
 				}
 				if( opts->Has( context, optName = strings->destroyString->Get( isolate ) ).ToChecked() ) {
-					regOpts.cbDestroyEvent = Local<Function>::Cast( opts->Get( optName ) );
+					regOpts.cbDestroyEvent = Local<Function>::Cast( opts->Get( context, optName ).ToLocalChecked() );
 				}
 			}
 

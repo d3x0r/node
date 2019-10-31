@@ -120,7 +120,7 @@ enum class PrimitiveType { kBoolean, kNumber, kString, kSymbol };
 // clang-format on
 #define SWITCH_CSA_ASSERT_ARGS(dummy, a, b, FUNC, ...) FUNC(a, b)
 #define CSA_ASSERT_ARGS(...)                                      \
-  SWITCH_CSA_ASSERT_ARGS(dummy, ##__VA_ARGS__, CSA_ASSERT_2_ARGS, \
+  SWITCH_CSA_ASSERT_ARGS(dummy,##__VA_ARGS__, CSA_ASSERT_2_ARGS, \
                          CSA_ASSERT_1_ARG, CSA_ASSERT_0_ARGS)
 
 // CSA_ASSERT(csa, <condition>, <extra values to print...>)

@@ -23523,29 +23523,28 @@ PRIORITY_PRELOAD( VideoRegisterInterface, VIDLIB_PRELOAD_PRIORITY )
    l.pii = GetImageInterface();
 #endif
 	{
-		CTEXTSTR name =
   // symbol defined by visual studio sack_bag.vcproj
 #ifdef SACK_BAG_EXPORTS
 #  ifdef __cplusplus
-		"sack.render++"
+#    define name		"sack.render++"
 #  else
-		"sack.render"
+#    define name		"sack.render"
 #  endif
 #else
 #  ifdef UNDER_CE
-			"render"
+#    define name			"render"
 #  else
 #	 ifdef __cplusplus
-		"sack.render++"
+#     define name		"sack.render++"
 #	 else
-			"sack.render"
+#     define name			"sack.render"
 #	 endif
 #  endif
 #endif
 			;
 		VidInterface._SetClipboardEventCallback = SetClipboardEventCallback;
 		RegisterInterface( name, GetDisplayInterface, DropDisplayInterface );
-		RegisterClassAlias( name, "render" );
+		RegisterClassAlias( "system/interfaces/" name, "system/interfaces/render" );
 	}
 	if( SACK_GetProfileInt( "SACK/Video Render", "enable alt-f4 exit", 1 ) )
 		BindEventToKey( NULL, KEY_F4, KEY_MOD_RELEASE|KEY_MOD_ALT, DefaultExit, 0 );

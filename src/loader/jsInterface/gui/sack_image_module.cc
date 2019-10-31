@@ -3,6 +3,7 @@
 
 
 void InitInterfaces( int opengl, int vulkan ) {
+#if 0
 	if( !g.pii ) {
 		if( vulkan ) {
 #ifdef _WIN32
@@ -30,11 +31,9 @@ void InitInterfaces( int opengl, int vulkan ) {
 			RegisterClassAlias( "system/interfaces/sack.image", "system/interfaces/image" );
 		}
 
-		g.pii = GetImageInterface();
-		g.pdi = GetDisplayInterface();
 	} else {
 	}
-
+#endif
 }
 
 Persistent<Function> ImageObject::constructor;

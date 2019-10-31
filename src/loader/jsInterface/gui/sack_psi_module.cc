@@ -585,6 +585,8 @@ void ControlObject::Init( Local<Object> _exports ) {
 		SimpleRegisterMethod( "psi/control/rtti/extra destroy"
 			, CustomDefaultDestroy, "int", "sack-gui destroy", "(PCOMMON)" );
 
+		g.pii = GetImageInterface();
+		g.pdi = GetDisplayInterface();
 		SetControlImageInterface( g.pii );
 		SetControlInterface( g.pdi );
 

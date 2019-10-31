@@ -450,7 +450,8 @@ static int CPROC CustomDefaultInit( PSI_CONTROL pc ) {
 	if( psiLocal.pendingCreate ) return 1; // internal create in progress... it will result with its own object later.
 	Isolate* isolate = Isolate::GetCurrent();
 	if( !isolate ) {
-		MakePSIEvent( NULL, false, Event_Control_Create, pc );
+    // this must block until completion
+		MakePSIEvent( NULL, true, Event_Control_Create, pc );
 	} else {
 		Local<Object> object = ControlObject::NewWrappedControl( isolate, pc );
 		ControlObject *control = ControlObject::Unwrap<ControlObject>( object );
@@ -585,6 +586,9 @@ void ControlObject::Init( Local<Object> _exports ) {
 		SimpleRegisterMethod( "psi/control/rtti/extra destroy"
 			, CustomDefaultDestroy, "int", "sack-gui destroy", "(PCOMMON)" );
 
+		// get the current interfaces, and set PSI to them.
+		// (this will be delayed until require())
+      // and is generally redundant.
 		g.pii = GetImageInterface();
 		g.pdi = GetDisplayInterface();
 		SetControlImageInterface( g.pii );

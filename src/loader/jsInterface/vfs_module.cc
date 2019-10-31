@@ -388,8 +388,8 @@ void VolumeObject::mkdir( const v8::FunctionCallbackInfo<Value>& args ){
 	Isolate* isolate = args.GetIsolate();
 	int argc = args.Length();
 	if( argc > 0 ) {
-  		String::Utf8Value fName( USE_ISOLATE( isolate ) args[0] );
-  		MakePath( *fName );
+		String::Utf8Value fName( USE_ISOLATE( isolate ) args[0] );
+		MakePath( *fName );
 	}
 }
 
@@ -459,19 +459,19 @@ void VolumeObject::openVolDb( const v8::FunctionCallbackInfo<Value>& args ) {
 	}
 	else {
 		// Invoked as plain function `MyObject(...)`, turn into construct call.
-  		VolumeObject *vol = ObjectWrap::Unwrap<VolumeObject>( (argc > 1)?args[1]->ToObject( isolate->GetCurrentContext() ).ToLocalChecked():args.Holder() );
-  		if( !vol->mountName )
-  		{
-  			isolate->ThrowException( Exception::Error(
-  					String::NewFromUtf8( isolate, TranslateText( "Volume is not mounted; cannot be used to open Sqlite database." ), v8::NewStringType::kNormal ).ToLocalChecked() ) );
-  			return;
-  		}
+		VolumeObject *vol = ObjectWrap::Unwrap<VolumeObject>( (argc > 1)?args[1]->ToObject( isolate->GetCurrentContext() ).ToLocalChecked():args.Holder() );
+		if( !vol->mountName )
+		{
+			isolate->ThrowException( Exception::Error(
+					String::NewFromUtf8( isolate, TranslateText( "Volume is not mounted; cannot be used to open Sqlite database." ), v8::NewStringType::kNormal ).ToLocalChecked() ) );
+			return;
+		}
 		int argc = args.Length();
 		Local<Value> *argv = new Local<Value>[2];
 		char dbName[256];
 		String::Utf8Value fName( USE_ISOLATE( isolate ) args[0] );
-  		snprintf( dbName, 256, "$sack@%s$%s", vol->mountName, (*fName) );
-  		argv[0] = String::NewFromUtf8( isolate, dbName, v8::NewStringType::kNormal ).ToLocalChecked();
+		snprintf( dbName, 256, "$sack@%s$%s", vol->mountName, (*fName) );
+		argv[0] = String::NewFromUtf8( isolate, dbName, v8::NewStringType::kNormal ).ToLocalChecked();
 		argv[1] = args.Holder();
 		
 		args.GetReturnValue().Set( newSqlObject( isolate, argc, argv ) );

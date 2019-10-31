@@ -37,7 +37,7 @@
 #include <construct.h>
 #include <configscript.h>
 #else
-#include "../../../deps/uv/src/sack.h"
+#include "../../../deps/sack/sack.h"
 #endif
 
 #undef New
@@ -52,10 +52,10 @@
 #include <openssl/x509v3.h>
 //#include <openssl/>
 
-#ifdef INCLUDE_GUI
+//#ifdef INCLUDE_GUI
 #include "gui/gui_global.h"
 
-#endif
+//#endif
 
 
 #if NODE_MAJOR_VERSION >= 10
@@ -350,8 +350,8 @@ typedef struct arrayBufferHolder ARRAY_BUFFER_HOLDER, *PARRAY_BUFFER_HOLDER;
 DeclareSet( ARRAY_BUFFER_HOLDER );
 
 void releaseBuffer( const WeakCallbackInfo<ARRAY_BUFFER_HOLDER> &info );
-Local<String> localString( Isolate *isolate, const char *data, int len );
-Local<String> localStringExternal( Isolate *isolate, const char *data, int len, const char *real_root );
+Local<String> localString( Isolate *isolate, const char *data, int len = -1);
+Local<String> localStringExternal( Isolate *isolate, const char *data, int len = -1, const char *real_root = NULL );
 
 void InitFS( const v8::FunctionCallbackInfo<Value>& args );
 void ConfigScriptInit( Local<Object> exports );

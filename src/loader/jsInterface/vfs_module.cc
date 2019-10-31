@@ -170,13 +170,14 @@ void VolumeObject::doInit( Local<Object> exports, Local<Context> context )
 	InitTask( isolate, exports );
 	ObjectStorageInit( isolate, exports );
 	fileMonitorInit( isolate, exports );
-#ifdef INCLUDE_GUI
+//#ifdef INCLUDE_GUI
+  InitSystray(isolate, exports);
 	textObjectInit( isolate, exports );
 	ImageObject::Init( exports );
 	RenderObject::Init( exports );
 	ControlObject::Init( exports );
 	InterShellObject::Init( exports );
-#endif
+//#endif
 
 #ifdef WIN32
 	RegObject::Init( exports );

@@ -24,6 +24,8 @@
 // this gets Wow64GetThreadContext
 #define _WIN32_WINNT 0x600
 #define USE_SQLITE
+// registers sqlite VFS
+#define USE_SQLITE_INTERFACE
 #define SQLITE_ENABLE_COLUMN_METADATA 1
 #include <stdio.h>
 #include <stdarg.h>
@@ -333,6 +335,7 @@ But WHO doesn't have stdint?  BTW is sizeof( size_t ) == sizeof( void* )
 #    else
 #      define LIBRARY_DEADSTART
 #    endif
+#define MD5_SOURCE
 #define USE_SACK_FILE_IO
 /* Defined when SACK_BAG_EXPORTS is defined. This was an
    individual library module once upon a time.           */
@@ -6962,6 +6965,7 @@ namespace sack {
 }
 #endif
 #endif
+#define DEFAULT_OUTPUT_STDERR
 /*
  *  Crafted by James Buckeyne
  *
@@ -7284,6 +7288,7 @@ But WHO doesn't have stdint?  BTW is sizeof( size_t ) == sizeof( void* )
 #    else
 #      define LIBRARY_DEADSTART
 #    endif
+#define MD5_SOURCE
 #define USE_SACK_FILE_IO
 /* Defined when SACK_BAG_EXPORTS is defined. This was an
    individual library module once upon a time.           */
@@ -35291,7 +35296,7 @@ typedef const PCTRANSFORM *CPCTRANSFORM;
 #define VECTLIBCONST const
 #endif
 //------ Constants for origin(0,0,0), and axii
-#ifndef VECTOR_LIBRARY_SOURCE
+#if !defined( VECTOR_LIBRARY_SOURCE ) || defined( VECTOR_LIBRARY_IS_EXTERNAL )
 MATHLIB_DEXPORT VECTLIBCONST PC_POINT VectorConst_0;
 /* Specifies the coordinate system's X axis direction. static
    constant.                                                  */
@@ -35645,7 +35650,7 @@ VECTOR_METHOD( RCOORD, IntersectLineWithPlane, (PCVECTOR Slope, PCVECTOR Origin,
 	PCVECTOR n, PCVECTOR o,
 	RCOORD *time) );
 VECTOR_METHOD( RCOORD, PointToPlaneT, (PCVECTOR n, PCVECTOR o, PCVECTOR p) );
-#if !defined( VECTOR_LIBRARY_SOURCE ) && !defined( NO_AUTO_VECTLIB_NAMES )
+#if ( !defined( VECTOR_LIBRARY_SOURCE ) && !defined( NO_AUTO_VECTLIB_NAMES ) ) || defined( NEED_VECTLIB_ALIASES )
 #define add EXTERNAL_NAME(add)
 #define sub EXTERNAL_NAME(sub)
 #define scale EXTERNAL_NAME(scale)
@@ -52805,9 +52810,6 @@ void SetWebSocketDataCompletion( PCLIENT pc, web_socket_completion callback ) {
 	}
 }
 #define NO_UNICODE_C
-#ifdef SACK_CORE_BUILD
-#define MD5_SOURCE
-#endif
 #define HTML5_WEBSOCKET_SOURCE
  // websocketclose is a common...
 #define SACK_WEBSOCKET_CLIENT_SOURCE
@@ -56993,6 +56995,8 @@ static int gatherString6(struct json_parse_state *state, CTEXTSTR msg, CTEXTSTR 
 			case 2028:
  // PS (paragraph separate)
 			case 2029:
+				// escaped whitespace is nul'ed.
+				state->escape = 0;
 				continue;
 			case '/':
 			case '\\':
@@ -58925,6 +58929,8 @@ static int gatherStringX(struct jsox_parse_state *state, CTEXTSTR msg, CTEXTSTR 
 			case 2028:
  // PS (paragraph separate)
 			case 2029:
+				// escaped whitespace is nul'ed.
+				state->escape = 0;
 				continue;
 			case '/':
 			case '\\':
@@ -61535,6 +61541,8 @@ static int gatherString6v(struct vesl_parse_state *state, CTEXTSTR msg, CTEXTSTR
 			case 2028:
  // PS (paragraph separate)
 			case 2029:
+				// escaped whitespace is nul'ed.
+				state->escape = 0;
 				continue;
 			case '/':
 			case '\\':
@@ -62946,8 +62954,10 @@ static void LocalInit( void )
 #endif
 		{
 #ifdef _WIN32
-			sack_set_common_data_producer( "Freedom Collective" );
-			sack_set_common_data_application( GetProgramName() );
+			if( !( *winfile_local ).producer )
+				sack_set_common_data_producer( "Freedom Collective" );
+			if( !( *winfile_local ).application )
+				sack_set_common_data_application( GetProgramName() );
 #else
 			{
 				char tmpPath[256];
@@ -63177,7 +63187,7 @@ TEXTSTR ExpandPathEx( CTEXTSTR path, struct file_system_interface *fsi )
 			{
 				CTEXTSTR here;
 				size_t len;
-				here = (*winfile_local).data_file_root;
+				here = (*winfile_local).local_data_file_root;
 				tmp_path = NewArray( TEXTCHAR, len = ( StrLen( here ) + StrLen( path ) ) );
 				tnprintf( tmp_path, len, "%s/%s", here, path + 2 );
 			}
@@ -77673,7 +77683,7 @@ PROCREG_PROC( CTEXTSTR, GetFirstRegisteredNameEx )( PCLASSROOT root, CTEXTSTR cl
 	PTREEDEF class_root;
 	PNAME name;
 	*data =
-		(PCLASSROOT)(class_root = (PTREEDEF)GetClassTree( (PCTREEDEF)root, (PCTREEDEF)classname ));
+		(PCLASSROOT)(class_root = (PTREEDEF)GetClassTreeEx( (PCTREEDEF)root, (PCTREEDEF)classname, NULL, 0 ));
 	if( class_root )
 	{
 		name = (PNAME)GetLeastNodeEx( class_root->Tree, &class_root->cursor );
@@ -83969,7 +83979,7 @@ struct sack_vfs_volume *sack_vfs_use_crypt_volume( POINTER memory, size_t sz, ui
 				vol->dwSize -= ((uintptr_t)actual_disk - (uintptr_t)memory);
 				memory = (POINTER)actual_disk;
 			} else {
-				lprintf( "Signature failed comparison; the core is not attached to anything." );
+				// not enough length to have a volume.
 				vol->diskReal = NULL;
 				vol->disk = NULL;
 				vol->dwSize = 0;
@@ -92275,7 +92285,9 @@ without express or implied warranty of any kind.
 These notices must be retained in any copies of any part of this
 documentation and/or software.
  */
-#define MD5_SOURCE
+#ifndef MD5_SOURCE
+#  define MD5_SOURCE
+#endif
 /* MD5.H - header file for MD5C.C
  */
 /* Copyright (C) 1991-2, RSA Data Security, Inc. Created 1991. All
@@ -99391,6 +99403,9 @@ static void DumpODBCInfo( PODBC odbc )
 					 , c->flags.bPushed?"Pushed":"Auto"
 					 , c->flags.bEndOfFile?"EOF":"more"
 					 );
+#if defined( USE_SQLITE ) || defined( USE_SQLITE_INTERFACE )
+			lprintf( "odbc->stmt: %p", c->stmt );
+#endif
 			lprintf( "\tCommand: %s"
 					 , GetText( VarTextPeek( c->pvt_out ) )
 					 );
@@ -100447,7 +100462,7 @@ static uintptr_t CPROC CommitThread( PTHREAD thread )
 		//lprintf( "waiting..." );
 		// if it expires, set tick and get out of loop
 		// clearing last_command_tick will also end the thread (a manual sqlcommit on the connection)
-		if( odbc->last_command_tick < ( timeGetTime() - 500 ) )
+		if( odbc->last_command_tick < ( timeGetTime() - 50 ) )
 		{
 			if( ( !odbc->flags.bThreadProtect )
 				|| EnterCriticalSecNoWait( &odbc->cs, NULL ) )
@@ -100457,7 +100472,7 @@ static uintptr_t CPROC CommitThread( PTHREAD thread )
 				break;
 			}
 		}
-		WakeableSleep( 250 );
+		WakeableSleep( 25 );
 	}
 	// a SQLCommit may have happened outside of this, which cleas last_command_tick
 	if( odbc->last_command_tick && tick )
@@ -101334,6 +101349,7 @@ void CloseDatabase( PODBC odbc )
 int __DoSQLCommandEx( PODBC odbc, PCOLLECT collection DBG_PASS )
 {
 	int retry = 0;
+   int log = 0;
 #ifdef USE_ODBC
 	RETCODE rc;
 #endif
@@ -101395,8 +101411,10 @@ corruptRetry:
 		if( odbc->flags.bNoLogging )
 			//odbc->hidden_messages++
 			;
-		else
+		else {
 			_lprintf(DBG_RELAY)( "Do Command[%p:%s]: %s", odbc, odbc->info.pDSN?odbc->info.pDSN:"NoDSN?", GetText( cmd ) );
+         log = 1;
+		}
 	}
 #ifdef LOG_EVERYTHING
 	lprintf( "sql command on %p [%s]", collection->hstmt, GetText( cmd ) );
@@ -101461,11 +101479,14 @@ retry:
 				break;
 			case SQLITE_BUSY:
 				// going to retry the statement as a whole anyhow.
+				if(log ) {
+					lprintf( "BUSY - WHY?" );
+					DumpAllODBCInfo();
+				}
 				sqlite3_finalize( collection->stmt );
 				if( !odbc->flags.bNoLogging )
 				{
 					_lprintf(DBG_RELAY)( "Database Busy, waiting on[%p:%s]: %s", odbc, odbc->info.pDSN?odbc->info.pDSN:"NoDSN?", GetText( cmd ) );
-					//DumpAllODBCInfo();
 				}
 				WakeableSleep( 25 );
 				goto retry;
@@ -101852,7 +101873,10 @@ int __GetSQLResult( PODBC odbc, PCOLLECT collection, int bMore )
 			switch( rc3 )
 			{
 			case SQLITE_BUSY:
-				lprintf( "Database busy, waiting..." );
+				if( pvtData ) {
+					lprintf( "Database busy, waiting..." );
+					DumpAllODBCInfo();
+				}
 				WakeableSleep( 25 );
 				goto retry;
 			case SQLITE_LOCKED:
@@ -108037,11 +108061,15 @@ SQLGETOPTION_PROC( void, CreateOptionDatabaseEx )( PODBC odbc, POPTION_TREE tree
 					|| !result )
 				{
 					OpenWriter( tree );
-					SQLCommandf( tree->odbc_writer
+					if( !SQLCommandf( tree->odbc_writer
 					           , "insert into option4_map (option_id,parent_option_id,name_id)values('%s','%s','%s' )"
 					           , GuidZero(), GuidZero()
 					           , New4ReadOptionNameTable(tree,".",OPTION4_NAME,"name_id","name",1 DBG_SRC)
-									);
+										 ) ) {
+						CTEXTSTR error;
+						FetchSQLError( tree->odbc_writer, &error );
+						lprintf( "Error inserting option: %s %s", "", error );
+					}
 				}
 				SQLEndQuery( tree->odbc );
 				//for( SQLQueryf( tree->odbc, &result, "select * from option4_map" ); result; FetchSQLResult( tree->odbc, &result ));
@@ -108088,6 +108116,57 @@ void OpenWriterEx( POPTION_TREE option DBG_PASS )
 #endif
 		option->odbc_writer = ConnectToDatabaseExx( option->odbc?option->odbc->info.pDSN:sg.Primary.info.pDSN, FALSE DBG_RELAY );
 		SQLCommand( option->odbc_writer, "pragma foreign_keys=on" );
+		{
+			CTEXTSTR* result = NULL;
+			SQLRecordQuery( option->odbc_writer, "pragma integrity_check", NULL, &result, NULL );
+			while( result ) {
+				//lprintf( "integrity:%s", result[0] );
+				FetchSQLRecord( option->odbc_writer, &result );
+			}
+		}
+		{
+			CTEXTSTR *result = NULL;
+			SQLRecordQuery( option->odbc_writer, "select * from sqlite_master", NULL, &result, NULL );
+			while( result ) {
+				FetchSQLRecord( option->odbc_writer, &result );
+			}
+		}
+		{
+			CTEXTSTR* result = NULL;
+			if( !SQLRecordQuery( option->odbc_writer, "select option4_values.option_id as ov,option4_map.option_id as om from option4_values left outer join option4_map USING(option_id) where option4_map.option_id is NULL", NULL, &result, NULL ) ){
+				CTEXTSTR error;
+				FetchSQLError( option->odbc_writer, &error );
+				lprintf( "Error selecting options: %s %s", "", error );
+			}
+			while( result ) {
+				lprintf( "Got Row: %s %s", result[0], result[1] );
+				FetchSQLRecord( option->odbc_writer, &result );
+			}
+		}
+		{
+			CTEXTSTR* result = NULL;
+			PLIST fixes = NULL;
+			if( !SQLRecordQuery( option->odbc_writer, "select a.option_id,a.parent_option_id   from option4_map a left outer join option4_map b on a.parent_option_id=b.option_id where b.option_id is NULL", NULL, &result, NULL ) ) {
+				CTEXTSTR error;
+				FetchSQLError( option->odbc_writer, &error );
+				lprintf( "Error selecting options: %s %s", "", error );
+			}
+			while( result ) {
+				AddLink( &fixes, StrDup( result[0] ) );
+				lprintf( "Got Row: %s %s", result[0], result[1] );
+				FetchSQLRecord( option->odbc_writer, &result );
+			}
+			{
+				INDEX idx;
+				char* id;
+				LIST_FORALL( fixes, idx, char*, id ) {
+					SQLCommandf( option->odbc_writer, "delete from option4_map where option_id='%s'", id );
+					Release( id );
+				}
+				DeleteList( &fixes );
+				//SQLCommit( option->odbc_writer );
+			}
+		}
 		/*
 		SQLCommand( option->odbc_writer, "pragma integrity_check" );
 		{
@@ -108189,6 +108268,9 @@ retry:
       //lprintf( "and the command..." );
 		if( !SQLCommandEx( tree->odbc_writer, query DBG_RELAY ) )
 		{
+			CTEXTSTR error;
+			FetchSQLError( tree->odbc_writer, &error );
+			lprintf( "Error inserting option: %s %s", "", error );
 			// insert failed;  assume it's a duplicate key now, and retry.
 			// on an option connection, maybe the name has been inserted, and is waiting in a commit-on-idle
 			// ... if we try this a few times, the commit will happen; then we can re-select and continue as normal
@@ -108683,9 +108765,8 @@ SQLGETOPTION_PROC( size_t, SACK_GetPrivateProfileStringExx )( CTEXTSTR pSection
 																			DBG_PASS
 																				)
 {
-	PODBC odbc = GetOptionODBC( GetDefaultOptionDatabaseDSN() );
 	size_t result;
-	result = SACK_GetPrivateProfileStringExxx( odbc,    pSection
+	result = SACK_GetPrivateProfileStringExxx( NULL,    pSection
 																		  , pOptname
 																		  , pDefaultbuf
 																		  , pBuffer
@@ -108694,7 +108775,6 @@ SQLGETOPTION_PROC( size_t, SACK_GetPrivateProfileStringExx )( CTEXTSTR pSection
 																		  , bQuiet
 																			DBG_RELAY
 																		  );
-	DropOptionODBC( odbc );
 	return result;
 }
 SQLGETOPTION_PROC( size_t, SACK_GetPrivateProfileStringEx )( CTEXTSTR pSection
@@ -108734,9 +108814,7 @@ SQLGETOPTION_PROC( int32_t, SACK_GetPrivateProfileIntExx )( PODBC odbc, CTEXTSTR
 SQLGETOPTION_PROC( int32_t, SACK_GetPrivateProfileIntEx )( CTEXTSTR pSection, CTEXTSTR pOptname, int32_t nDefault, CTEXTSTR pINIFile, LOGICAL bQuiet )
 {
 	int32_t result;
-	PODBC odbc = GetOptionODBC( GetDefaultOptionDatabaseDSN() );
-	result = SACK_GetPrivateProfileIntExx( odbc, pSection, pOptname, nDefault, pINIFile, bQuiet DBG_SRC );
-	DropOptionODBC( odbc );
+	result = SACK_GetPrivateProfileIntExx( NULL, pSection, pOptname, nDefault, pINIFile, bQuiet DBG_SRC );
 	return result;
 }
 SQLGETOPTION_PROC( int32_t, SACK_GetPrivateProfileInt )( CTEXTSTR pSection, CTEXTSTR pOptname, int32_t nDefault, CTEXTSTR pINIFile )
@@ -108823,11 +108901,8 @@ SQLGETOPTION_PROC( LOGICAL, SACK_WritePrivateOptionStringEx )( PODBC odbc, CTEXT
 //------------------------------------------------------------------------
 SQLGETOPTION_PROC( LOGICAL, SACK_WritePrivateProfileStringEx )( CTEXTSTR pSection, CTEXTSTR pName, CTEXTSTR pValue, CTEXTSTR pINIFile, LOGICAL flush )
 {
-	PODBC odbc;
 	LOGICAL result;
-	odbc = GetOptionODBC( GetDefaultOptionDatabaseDSN() );
-	result = SACK_WritePrivateOptionStringEx( odbc, pSection, pName, pValue, pINIFile, flush );
-	DropOptionODBC( odbc );
+	result = SACK_WritePrivateOptionStringEx( NULL, pSection, pName, pValue, pINIFile, flush );
 	return result;
 }
 SQLGETOPTION_PROC( LOGICAL, SACK_WritePrivateProfileString )( CTEXTSTR pSection, CTEXTSTR pName, CTEXTSTR pValue, CTEXTSTR pINIFile )
@@ -108931,7 +109006,7 @@ SQLGETOPTION_PROC( int, SACK_WritePrivateProfileExceptionString )( CTEXTSTR pSec
 		if( !SQLCommand( og.Option, exception ) )
 		{
 			CTEXTSTR result = NULL;
-			GetSQLResult( &result );
+			GetSQLError( &result );
 			lprintf( "Insert exception failed: %s", result );
 		}
 		else
@@ -109273,6 +109348,8 @@ PODBC GetOptionODBCEx( CTEXTSTR dsn  DBG_PASS )
 #endif
 			odbc = ConnectToDatabaseExx( tracker->name, TRUE DBG_RELAY );
 			SetSQLCorruptionHandler( odbc, repairOptionDb, (uintptr_t)odbc );
+ // this doesn't need to transact.
+         SetSQLAutoTransact( odbc, 0 );
 			SQLCommand( odbc, "pragma foreign_keys=on" );
 			{
 				INDEX idx;
@@ -109445,16 +109522,25 @@ CTEXTSTR New4ReadOptionNameTable( POPTION_TREE tree, CTEXTSTR name, CTEXTSTR tab
 			if( SQLQueryEx( tree->odbc, query, &result DBG_RELAY) && result )
 			{
 				IDName = SaveText( result );
+ // allow repurposing...
 				SQLEndQuery( tree->odbc );
+				PopODBCEx(tree->odbc);
 			}
 			else if( bCreate )
 			{
-				TEXTSTR newval = EscapeSQLString( tree->odbc, name );
+				TEXTSTR newval;
+				SQLEndQuery( tree->odbc );
+				PopODBCEx(tree->odbc);
+				OpenWriterEx( tree DBG_RELAY );
+				newval = EscapeSQLString( tree->odbc_writer, name );
 				tnprintf( query, sizeof( query ), "insert into %s (%s,%s) values( '%s','%s' )"
 						  , table, col, namecol, IDName = GetSeqGUID(), newval );
 				OpenWriterEx( tree DBG_RELAY );
 				if( !SQLCommandEx( tree->odbc_writer, query DBG_RELAY ) )
 				{
+					CTEXTSTR error;
+					FetchSQLError( tree->odbc_writer, &error );
+					lprintf( "Error inserting option name: %s %s", "", error );
 #ifdef DETAILED_LOGGING
 					lprintf( "insert failed, how can we define name %s?", name );
 #endif
@@ -109466,9 +109552,10 @@ CTEXTSTR New4ReadOptionNameTable( POPTION_TREE tree, CTEXTSTR name, CTEXTSTR tab
 				}
 				Release( newval );
 			}
-			else
+			else {
 				IDName = NULL;
-			PopODBCEx(tree->odbc);
+				PopODBCEx(tree->odbc);
+			}
 			if( IDName )
 			{
 				// instead of strdup, consider here using SaveName from procreg?

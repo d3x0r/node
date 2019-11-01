@@ -12,8 +12,8 @@
 #define SACK_AMALGAMATE
 #define NO_OPEN_MACRO
 //#define __NO_MMAP__
-#define __STATIC__
 #define NO_FILEOP_ALIAS
+#define SACK_BAG_EXPORTS
 #define __STATIC_GLOBALS__
 //#define TYPELIB_SOURCE
 #define NEED_SHLAPI
@@ -52,6 +52,10 @@ namespace sack {
 #define __3D__ 1
 #define PURE_OPENGL2_ENABLED
 #define MAKE_RCOORD_SINGLE
+#define NEED_VECTLIB_ALIASES
+#define VECTOR_LIBRARY_IS_EXTERNAL
+// statically linked against this.
+#define GLEW_BUILD
 #define USE_API_ALIAS_PREFIX ogl_
 //------------------------------------------------------------------------------------
 /****************
@@ -396,6 +400,7 @@ But WHO doesn't have stdint?  BTW is sizeof( size_t ) == sizeof( void* )
 #    else
 #      define LIBRARY_DEADSTART
 #    endif
+#define MD5_SOURCE
 #define USE_SACK_FILE_IO
 /* Defined when SACK_BAG_EXPORTS is defined. This was an
    individual library module once upon a time.           */
@@ -9989,6 +9994,7 @@ _OPTION_NAMESPACE_END _SQL_NAMESPACE_END SACK_NAMESPACE_END
 #endif
 // this is safe to leave on.
 #define LOG_ORDERING_REFOCUS
+//#define LOG_STARTUP
 // move local into render namespace.
 #define VIDLIB_MAIN
 #ifndef VIDLIB_COMMON_INCLUDED
@@ -10667,7 +10673,7 @@ typedef const PCTRANSFORM *CPCTRANSFORM;
 #define VECTLIBCONST const
 #endif
 //------ Constants for origin(0,0,0), and axii
-#ifndef VECTOR_LIBRARY_SOURCE
+#if !defined( VECTOR_LIBRARY_SOURCE ) || defined( VECTOR_LIBRARY_IS_EXTERNAL )
 MATHLIB_DEXPORT VECTLIBCONST PC_POINT VectorConst_0;
 /* Specifies the coordinate system's X axis direction. static
    constant.                                                  */
@@ -11021,7 +11027,7 @@ VECTOR_METHOD( RCOORD, IntersectLineWithPlane, (PCVECTOR Slope, PCVECTOR Origin,
 	PCVECTOR n, PCVECTOR o,
 	RCOORD *time) );
 VECTOR_METHOD( RCOORD, PointToPlaneT, (PCVECTOR n, PCVECTOR o, PCVECTOR p) );
-#if !defined( VECTOR_LIBRARY_SOURCE ) && !defined( NO_AUTO_VECTLIB_NAMES )
+#if ( !defined( VECTOR_LIBRARY_SOURCE ) && !defined( NO_AUTO_VECTLIB_NAMES ) ) || defined( NEED_VECTLIB_ALIASES )
 #define add EXTERNAL_NAME(add)
 #define sub EXTERNAL_NAME(sub)
 #define scale EXTERNAL_NAME(scale)
@@ -18366,7 +18372,9 @@ void  ogl_PutDisplayAbove (PVIDEO hVideo, PVIDEO hAbove)
 			}
 			//lprintf( "Add camera to list" );
 			AddLink( &l.cameras, camera );
+#ifdef DEBUG_LOAD_OPTIONS
 			lprintf( " camera is %d,%d", camera->w, camera->h );
+#endif
 		}
 		if( !default_camera )
 		{
@@ -18377,7 +18385,8 @@ void  ogl_PutDisplayAbove (PVIDEO hVideo, PVIDEO hAbove)
 		SetLink( &l.cameras, 0, default_camera );
 	}
 	{
-		PODBC option = GetOptionODBC( NULL );
+//GetOptionODBC( NULL );
+		PODBC option = NULL;
 		l.flags.bLogMessageDispatch = SACK_GetOptionIntEx( option, GetProgramName(), "SACK/Video Render/log message dispatch", 0, TRUE );
 		l.flags.bLogFocus = SACK_GetOptionIntEx( option, GetProgramName(), "SACK/Video Render/log focus event", 0, TRUE );
 		l.flags.bLogKeyEvent = SACK_GetOptionIntEx( option, GetProgramName(), "SACK/Video Render/log key event", 0, TRUE );
@@ -18442,7 +18451,9 @@ void  ogl_PutDisplayAbove (PVIDEO hVideo, PVIDEO hAbove)
 			}
 			//lprintf( "Add camera to list" );
 			AddLink( &l.cameras, camera );
+#ifdef LOG_STARTUP
 			lprintf( " camera is %d,%d", camera->w, camera->h );
+#endif
 		}
 		if( !default_camera )
 		{
@@ -21870,12 +21881,12 @@ RENDER_NAMESPACE
 #    define USE_KEYHOOK
 #  endif
 #endif
+// Log initial load options and startup (before real otuput is created)
 //#define LOG_STARTUP
 //#define OTHER_EVENTS_HERE
 //#define LOG_MOUSE_EVENTS
 //#define LOG_RECT_UPDATE
 //#define LOG_DESTRUCTION
-#define LOG_STARTUP
 //#define LOG_FOCUSEVENTS
 //#define LOG_SHOW_HIDE
 //#define LOG_DISPLAY_RESIZE

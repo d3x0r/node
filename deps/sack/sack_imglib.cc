@@ -11,8 +11,8 @@
 #define SACK_AMALGAMATE
 #define NO_OPEN_MACRO
 //#define __NO_MMAP__
-#define __STATIC__
 #define NO_FILEOP_ALIAS
+#define SACK_BAG_EXPORTS
 #define __STATIC_GLOBALS__
 //#define TYPELIB_SOURCE
 #define NEED_SHLAPI
@@ -20,6 +20,9 @@
 #define _OPENGL_ENABLED
 #define IMAGE_LIBRARY_SOURCE
 #define MAKE_RCOORD_SINGLE
+#define NEED_VECTLIB_ALIASES
+#define PNG_SOURCE
+#define FREETYPE_SOURCE
 //#include <stdio.h>
 //#include <stdarg.h>
 //#include <stdhdrs.h>
@@ -908,6 +911,7 @@ But WHO doesn't have stdint?  BTW is sizeof( size_t ) == sizeof( void* )
 #    else
 #      define LIBRARY_DEADSTART
 #    endif
+#define MD5_SOURCE
 #define USE_SACK_FILE_IO
 /* Defined when SACK_BAG_EXPORTS is defined. This was an
    individual library module once upon a time.           */
@@ -8172,7 +8176,7 @@ typedef const PCTRANSFORM *CPCTRANSFORM;
 #define VECTLIBCONST const
 #endif
 //------ Constants for origin(0,0,0), and axii
-#ifndef VECTOR_LIBRARY_SOURCE
+#if !defined( VECTOR_LIBRARY_SOURCE ) || defined( VECTOR_LIBRARY_IS_EXTERNAL )
 MATHLIB_DEXPORT VECTLIBCONST PC_POINT VectorConst_0;
 /* Specifies the coordinate system's X axis direction. static
    constant.                                                  */
@@ -8526,7 +8530,7 @@ VECTOR_METHOD( RCOORD, IntersectLineWithPlane, (PCVECTOR Slope, PCVECTOR Origin,
 	PCVECTOR n, PCVECTOR o,
 	RCOORD *time) );
 VECTOR_METHOD( RCOORD, PointToPlaneT, (PCVECTOR n, PCVECTOR o, PCVECTOR p) );
-#if !defined( VECTOR_LIBRARY_SOURCE ) && !defined( NO_AUTO_VECTLIB_NAMES )
+#if ( !defined( VECTOR_LIBRARY_SOURCE ) && !defined( NO_AUTO_VECTLIB_NAMES ) ) || defined( NEED_VECTLIB_ALIASES )
 #define add EXTERNAL_NAME(add)
 #define sub EXTERNAL_NAME(sub)
 #define scale EXTERNAL_NAME(scale)
@@ -30931,7 +30935,14 @@ struct font_renderer_tag {
 typedef struct font_renderer_tag FONT_RENDERER;
 static PLIST fonts;
 static LOGICAL cleanFonts;
-static void OnDisplayConnect( "@00 Image Core" )( struct display_app*app, struct display_app_local ***pppLocal )
+#ifdef USE_API_ALIAS_PREFIX
+#  define FNTRENDER_DISPLAYCONNECT_NAME__(a) a
+#  define FNTRENDER_DISPLAYCONNECT_NAME_(n)   FNTRENDER_DISPLAYCONNECT_NAME__("@00 Image Core" #n)
+#  define FNTRENDER_DISPLAYCONNECT_NAME FNTRENDER_DISPLAYCONNECT_NAME_(USE_API_ALIAS_PREFIX)
+#else
+#  define FNTRENDER_DISPLAYCONNECT_NAME
+#endif
+static void OnDisplayConnect( FNTRENDER_DISPLAYCONNECT_NAME )( struct display_app*app, struct display_app_local ***pppLocal )
 {
 	INDEX idx;
 	PFONT_RENDERER renderer;
@@ -55449,8 +55460,13 @@ PRIORITY_PRELOAD( ImageRegisterInterface, IMAGE_PRELOAD_PRIORITY )
 #  endif
 #endif
 	RegisterInterface( NAME, _ImageGetImageInterface, _ImageDropImageInterface );
-	RegisterClassAlias( NAME, "image" );
-//#ifndef _DEBUG
+	// if there hasn't been a default set already, default to this.
+	// DLL this will not be set, but will end up overridden later
+	// Static library, this gets set after interface.conf is read, which
+	// means the alias should aready be set.
+	if( !CheckClassRoot( "system/interfaces/image" ) )
+		RegisterClassAlias( "system/interfaces/" NAME, "system/interfaces/image" );
+	//#ifndef _DEBUG
 //  MMX/Assembly do not support
 //   alpha translation of multishaded imaged.
 //   mono shaded images were updated a while ago also,

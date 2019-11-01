@@ -12,8 +12,8 @@
 #define SACK_AMALGAMATE
 #define NO_OPEN_MACRO
 //#define __NO_MMAP__
-#define __STATIC__
 #define NO_FILEOP_ALIAS
+#define SACK_BAG_EXPORTS
 #define __STATIC_GLOBALS__
 //#define TYPELIB_SOURCE
 #define NEED_SHLAPI
@@ -386,6 +386,7 @@ But WHO doesn't have stdint?  BTW is sizeof( size_t ) == sizeof( void* )
 #    else
 #      define LIBRARY_DEADSTART
 #    endif
+#define MD5_SOURCE
 #define USE_SACK_FILE_IO
 /* Defined when SACK_BAG_EXPORTS is defined. This was an
    individual library module once upon a time.           */
@@ -11540,7 +11541,7 @@ typedef const PCTRANSFORM *CPCTRANSFORM;
 #define VECTLIBCONST const
 #endif
 //------ Constants for origin(0,0,0), and axii
-#ifndef VECTOR_LIBRARY_SOURCE
+#if !defined( VECTOR_LIBRARY_SOURCE ) || defined( VECTOR_LIBRARY_IS_EXTERNAL )
 MATHLIB_DEXPORT VECTLIBCONST PC_POINT VectorConst_0;
 /* Specifies the coordinate system's X axis direction. static
    constant.                                                  */
@@ -11894,7 +11895,7 @@ VECTOR_METHOD( RCOORD, IntersectLineWithPlane, (PCVECTOR Slope, PCVECTOR Origin,
 	PCVECTOR n, PCVECTOR o,
 	RCOORD *time) );
 VECTOR_METHOD( RCOORD, PointToPlaneT, (PCVECTOR n, PCVECTOR o, PCVECTOR p) );
-#if !defined( VECTOR_LIBRARY_SOURCE ) && !defined( NO_AUTO_VECTLIB_NAMES )
+#if ( !defined( VECTOR_LIBRARY_SOURCE ) && !defined( NO_AUTO_VECTLIB_NAMES ) ) || defined( NEED_VECTLIB_ALIASES )
 #define add EXTERNAL_NAME(add)
 #define sub EXTERNAL_NAME(sub)
 #define scale EXTERNAL_NAME(scale)
@@ -21803,7 +21804,8 @@ static void VideoLoadOptions( void )
 	// don't set this anymore, the new option connection is same version as default
 	//SetOptionDatabaseOption( option, TRUE );
 #ifndef __NO_OPTIONS__
-	PODBC option = GetOptionODBC( NULL );
+//GetOptionODBC( NULL );
+	PODBC option = NULL;
 	l.flags.bLogMessages = SACK_GetOptionIntEx( option, GetProgramName(), "SACK/Video Render/log messages", 0, TRUE );
 	l.flags.bHookTouchEvents = SACK_GetOptionIntEx( option, GetProgramName(), "SACK/Video Render/use touch event", 0, TRUE );
 	l.flags.bLogMouseEvents = SACK_GetOptionIntEx( option, GetProgramName(), "SACK/Video Render/log mouse event", 0, TRUE );
@@ -21821,7 +21823,7 @@ static void VideoLoadOptions( void )
 	l.flags.bUseLLKeyhook = SACK_GetOptionIntEx( option, GetProgramName(), "SACK/Video Render/Use Low Level Keyhook", 0, TRUE );
    l.flags.bDisableAutoDoubleClickFullScreen = SACK_GetOptionIntEx( option, GetProgramName(), "SACK/Video Render/Disable full-screen mouse auto double-click", 0, TRUE );
    l.flags.bDoNotPreserveAspectOnFullScreen = SACK_GetOptionIntEx( option, GetProgramName(), "SACK/Video Render/Do not preserve aspect streching full-screen", 0, TRUE );
-	DropOptionODBC( option );
+	//DropOptionODBC( option );
 #else
 #  ifndef UNDER_CE
 	if( l.UpdateLayeredWindowIndirect )
@@ -23544,7 +23546,12 @@ PRIORITY_PRELOAD( VideoRegisterInterface, VIDLIB_PRELOAD_PRIORITY )
 			;
 		VidInterface._SetClipboardEventCallback = SetClipboardEventCallback;
 		RegisterInterface( name, GetDisplayInterface, DropDisplayInterface );
-		RegisterClassAlias( "system/interfaces/" name, "system/interfaces/render" );
+		// if there hasn't been a default set already, default to this.
+		// DLL this will not be set, but will end up overridden later
+		// Static library, this gets set after interface.conf is read, which
+      // means the alias should aready be set.
+      if( !CheckClassRoot( "system/interfaces/render" ) )
+			RegisterClassAlias( "system/interfaces/" name, "system/interfaces/render" );
 	}
 	if( SACK_GetProfileInt( "SACK/Video Render", "enable alt-f4 exit", 1 ) )
 		BindEventToKey( NULL, KEY_F4, KEY_MOD_RELEASE|KEY_MOD_ALT, DefaultExit, 0 );

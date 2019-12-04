@@ -473,11 +473,6 @@ void fs__open(uv_fs_t* req) {
   int fd, current_umask;
   int flags = req->fs.info.file_flags;
   struct uv__fd_info_s fd_info;
-  if( sack_exists( req->path ) ) {
-	  FILE *f = sack_fopen( 0, req->path, "rb" );
-	  SET_REQ_RESULT( req, setInternalFD( -1, f ) );
-	  return;
-  }
 
   /* Adjust flags to be compatible with the memory file mapping. Save the
    * original flags to emulate the correct behavior. */
@@ -636,6 +631,45 @@ void fs__open(uv_fs_t* req) {
 
   /* Setting this flag makes it possible to open a directory. */
   attributes |= FILE_FLAG_BACKUP_SEMANTICS;
+
+  {
+    FILE* f;
+#define CREATE_NEW          1
+#define CREATE_ALWAYS       2
+#define OPEN_EXISTING       3
+#define OPEN_ALWAYS         4
+#define TRUNCATE_EXISTING   5
+    switch( disposition & 7 ) {
+    case CREATE_NEW:
+      if( !sack_exists( req->path ) ) {
+        f = sack_fopen( 0, req->path, "wb" );
+        SET_REQ_RESULT( req, setInternalFD( -1, f ) );
+        return;
+      }
+      break;
+    case CREATE_ALWAYS:
+      f = sack_fopen( 0, req->path, "wb" );
+      SET_REQ_RESULT( req, setInternalFD( -1, f ) );
+      return;
+    case  OPEN_EXISTING:
+      if( sack_exists( req->path ) ) {
+        f = sack_fopen( 0, req->path, "rb" );
+        SET_REQ_RESULT( req, setInternalFD( -1, f ) );
+        return;
+      }
+      break;
+    case OPEN_ALWAYS:
+      f = sack_fopen( 0, req->path, "wb+" );
+      SET_REQ_RESULT( req, setInternalFD( -1, f ) );
+      return;
+    case TRUNCATE_EXISTING:
+      if( sack_exists( req->path ) ) {
+        f = sack_fopen( 0, req->path, "wb" );
+        SET_REQ_RESULT( req, setInternalFD( -1, f ) );
+      }
+      return;
+    }
+  }
 
   file = CreateFileW(req->file.pathw,
                      access,
@@ -1183,18 +1217,27 @@ void fs__write(uv_fs_t* req) {
 
 
 void fs__rmdir(uv_fs_t* req) {
-  int result = _wrmdir(req->file.pathw);
+  int result = sack_rmdir( 0, req->path );
+  //int result = _wrmdir(req->file.pathw);
   SET_REQ_RESULT(req, result);
 }
 
 
 void fs__unlink(uv_fs_t* req) {
-  const WCHAR* pathw = req->file.pathw;
+  WCHAR* pathw = req->file.pathw;
   HANDLE handle;
   BY_HANDLE_FILE_INFORMATION info;
   FILE_DISPOSITION_INFORMATION disposition;
   IO_STATUS_BLOCK iosb;
   NTSTATUS status;
+  for( wchar_t* c = pathw; c[0]; c++ ) if( c[0] == '/' ) c[0] = '\\';
+  char* cpath = WcharConvert( pathw );
+  char* c;
+  for( c = cpath; c[0]; c++ ) if( c[0] == '/' ) c[0] = '\\';
+  int result = sack_unlink( 0, cpath );
+  Release( cpath );
+  SET_REQ_WIN32_ERROR( req, pRtlNtStatusToDosError( result?ERROR_SUCCESS:ERROR_ACCESS_DENIED ) );
+  return;
 
   handle = CreateFileW(pathw,
                        FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES | DELETE,
@@ -1277,7 +1320,8 @@ void fs__unlink(uv_fs_t* req) {
 
 void fs__mkdir(uv_fs_t* req) {
   /* TODO: use req->mode. */
-  req->result = _wmkdir(req->file.pathw);
+  req->result = sack_mkdir( 0, req->path )-1;
+  //req->result = _wmkdir(req->file.pathw);
   if (req->result == -1) {
     req->sys_errno_ = _doserrno;
     req->result = req->sys_errno_ == ERROR_INVALID_NAME
@@ -1334,8 +1378,74 @@ void fs__mkdtemp(uv_fs_t* req) {
   }
 }
 
+struct reqDirState {
+  uv__dirent_t** dirents;
+  size_t dirents_size;
+  size_t dirents_used;
+  uv_fs_t* req;
+
+};
+
+void addFile( uintptr_t psvUser, CTEXTSTR name, enum ScanFileProcessFlags flags ) {
+  struct reqDirState* state = ( struct reqDirState*)psvUser;
+  if( name[0] == '.' && ( name[1] == 0 || ( name[1] == '.' || name[2] == 0 ) ) )
+    return; // skip . and ..;
+  if( state->dirents_used >= state->dirents_size ) {
+    static const size_t dirents_initial_size = 32;
+    size_t new_dirents_size =
+      state->dirents_size == 0 ? dirents_initial_size : state->dirents_size << 1;
+    uv__dirent_t** new_dirents =
+      uv__realloc( state->dirents, new_dirents_size * sizeof * state->dirents );
+
+    if( new_dirents == NULL )
+      return;
+
+    state->dirents_size = new_dirents_size;
+    state->dirents = new_dirents;
+  }
+  size_t utf8_len = strlen( name ) + 1;
+  uv__dirent_t* dirent;// = state->dirents + state->dirents_used++;
+  dirent = uv__malloc( sizeof * dirent + utf8_len );
+
+  state->dirents[state->dirents_used++] = dirent;
+
+  strcpy( dirent->d_name, name );
+  //dirent->d_name[utf8_len] = '\0';
+  if( flags & SFF_DIRECTORY )
+    dirent->d_type = UV__DT_DIR;
+  else
+    dirent->d_type = UV__DT_FILE;
+
+  /* Fill out the type field. */
+  //if( info->FileAttributes & FILE_ATTRIBUTE_DEVICE )
+  //  dirent->d_type = UV__DT_CHAR;
+  //else if( info->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT )
+  //  dirent->d_type = UV__DT_LINK;
+  //else if( info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY )
+  //  dirent->d_type = UV__DT_DIR;
+  //else
+   // dirent->d_type = UV__DT_FILE;
+
+}
 
 void fs__scandir(uv_fs_t* req) {
+  {
+    POINTER info = NULL;
+    struct reqDirState state;
+    state.dirents = NULL;
+    state.dirents_used = 0;
+    state.dirents_size = 0;
+    state.req = req;
+#ifdef _WIN32
+    for( char* c = req->path; c[0]; c++ ) if( c[0] == '/' ) c[0] = '\\';
+#endif
+    while( ScanFiles( req->path, "*", &info, addFile, SFF_NAMEONLY|SFF_DIRECTORIES, (uintptr_t)&state ) );
+    
+    state.req->ptr = state.dirents;
+    SET_REQ_RESULT( state.req, state.dirents_used );
+    req->fs.info.nbufs = 0;
+    return;
+  }
   static const size_t dirents_initial_size = 32;
 
   HANDLE dir_handle = INVALID_HANDLE_VALUE;
@@ -1363,6 +1473,8 @@ void fs__scandir(uv_fs_t* req) {
                 sizeof(FILE_DIRECTORY_INFORMATION) + 256 * sizeof(WCHAR));
 
   /* Open the directory. */
+  for( wchar_t *c = req->file.pathw; c[0]; c++ ) if( c[0] == '/' ) c[0] = '\\';
+
   dir_handle =
       CreateFileW(req->file.pathw,
                   FILE_LIST_DIRECTORY | SYNCHRONIZE,
@@ -1430,8 +1542,7 @@ void fs__scandir(uv_fs_t* req) {
         continue;
 
       /* Compute the space required to store the filename as UTF-8. */
-      utf8_len = WideCharToMultiByte(
-          CP_UTF8, 0, &info->FileName[0], wchar_len, NULL, 0, NULL, NULL);
+      utf8_len = WideCharToMultiByte( CP_UTF8, 0, &info->FileName[0], wchar_len, NULL, 0, NULL, NULL);
       if (utf8_len == 0)
         goto win32_error;
 
@@ -1838,6 +1949,9 @@ INLINE static DWORD fs__stat_impl_from_path(WCHAR* path,
   DWORD ret;
   LOGICAL p = 0;
   char *cpath = WcharConvert( path );
+  char* c;
+  for( c = cpath; c[0]; c++ ) if( c[0] == '/' ) c[0] = '\\';
+  memset( statbuf, 0, sizeof( *statbuf ) );
   if( cpath[0] == 0 ) {
     statbuf->st_mode = S_IFDIR;
     Deallocate( char*, cpath );
@@ -1850,9 +1964,17 @@ INLINE static DWORD fs__stat_impl_from_path(WCHAR* path,
   }
   if (sack_exists(cpath)) {
     statbuf->st_mode = S_IFREG;
+    {
+      FILE* file = sack_fopen( 0, cpath, "rb" );
+      if( file ) {
+        statbuf->st_size = sack_fsize( file );
+        sack_fclose( file );
+      }
+    }
     Deallocate( char*, cpath );
     return 0;
   }
+  Deallocate( char*, cpath );
 
   flags = FILE_FLAG_BACKUP_SEMANTICS;
   if (do_lstat)

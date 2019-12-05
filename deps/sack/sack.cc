@@ -302,13 +302,24 @@ But WHO doesn't have stdint?  BTW is sizeof( size_t ) == sizeof( void* )
 #endif
 #if !defined( __NO_THREAD_LOCAL__ ) && ( defined( _MSC_VER ) || defined( __WATCOMC__ ) )
 #  define HAS_TLS 1
-#  define DeclareThreadLocal static __declspec(thread)
-#  define DeclareThreadVar __declspec(thread)
+#  ifdef __cplusplus
+#    define DeclareThreadLocal thread_local
+#    define DeclareThreadVar  thread_local
+#  else
+#    define DeclareThreadLocal static __declspec(thread)
+#    define DeclareThreadVar __declspec(thread)
+#  endif
 #elif !defined( __NO_THREAD_LOCAL__ ) && ( defined( __GNUC__ ) )
-#  define HAS_TLS 1
-#  define DeclareThreadLocal static __thread
-#  define DeclareThreadVar __thread
+#    define HAS_TLS 1
+#    ifdef __cplusplus
+#      define DeclareThreadLocal thread_local
+#      define DeclareThreadVar thread_local
+#    else
+#    define DeclareThreadLocal static __thread
+#    define DeclareThreadVar __thread
+#  endif
 #else
+// if no HAS_TLS
 #  define DeclareThreadLocal static
 #  define DeclareThreadVar
 #endif
@@ -6480,6 +6491,14 @@ typedef uintptr_t (CPROC*ThreadStartProc)( PTHREAD );
 /* Function signature for a thread entry point passed to
    ThreadToSimple.                                             */
 typedef uintptr_t (*ThreadSimpleStartProc)( POINTER );
+/*
+  OnThreadCreate allows registering a procedure to run
+  when a thread is created.  (Or an existing thread becomes
+  tracked within this library, via MakeThread() ).
+  It is called once per thread, for each thread created
+  after registering the callback.
+*/
+TIMER_PROC( void, OnThreadCreate )( void ( *v )( void ) );
 /* Create a separate thread that starts in the routine
    specified. The uintptr_t value (something that might be a
    pointer), is passed in the PTHREAD structure. (See
@@ -7255,13 +7274,24 @@ But WHO doesn't have stdint?  BTW is sizeof( size_t ) == sizeof( void* )
 #endif
 #if !defined( __NO_THREAD_LOCAL__ ) && ( defined( _MSC_VER ) || defined( __WATCOMC__ ) )
 #  define HAS_TLS 1
-#  define DeclareThreadLocal static __declspec(thread)
-#  define DeclareThreadVar __declspec(thread)
+#  ifdef __cplusplus
+#    define DeclareThreadLocal thread_local
+#    define DeclareThreadVar  thread_local
+#  else
+#    define DeclareThreadLocal static __declspec(thread)
+#    define DeclareThreadVar __declspec(thread)
+#  endif
 #elif !defined( __NO_THREAD_LOCAL__ ) && ( defined( __GNUC__ ) )
-#  define HAS_TLS 1
-#  define DeclareThreadLocal static __thread
-#  define DeclareThreadVar __thread
+#    define HAS_TLS 1
+#    ifdef __cplusplus
+#      define DeclareThreadLocal thread_local
+#      define DeclareThreadVar thread_local
+#    else
+#    define DeclareThreadLocal static __thread
+#    define DeclareThreadVar __thread
+#  endif
 #else
+// if no HAS_TLS
 #  define DeclareThreadLocal static
 #  define DeclareThreadVar
 #endif
@@ -13434,6 +13464,14 @@ typedef uintptr_t (CPROC*ThreadStartProc)( PTHREAD );
 /* Function signature for a thread entry point passed to
    ThreadToSimple.                                             */
 typedef uintptr_t (*ThreadSimpleStartProc)( POINTER );
+/*
+  OnThreadCreate allows registering a procedure to run
+  when a thread is created.  (Or an existing thread becomes
+  tracked within this library, via MakeThread() ).
+  It is called once per thread, for each thread created
+  after registering the callback.
+*/
+TIMER_PROC( void, OnThreadCreate )( void ( *v )( void ) );
 /* Create a separate thread that starts in the routine
    specified. The uintptr_t value (something that might be a
    pointer), is passed in the PTHREAD structure. (See
@@ -29024,6 +29062,11 @@ FILESYS_PROC  int FILESYS_API  sack_iclose ( INDEX file_handle );
 FILESYS_PROC  int FILESYS_API  sack_ilseek ( INDEX file_handle, size_t pos, int whence );
 FILESYS_PROC  int FILESYS_API  sack_iread ( INDEX file_handle, POINTER buffer, int size );
 FILESYS_PROC  int FILESYS_API  sack_iwrite ( INDEX file_handle, CPOINTER buffer, int size );
+/*
+	Enable per-thread mounts.
+	once you do this, you will have to provide the thread with some mounts.
+*/
+FILESYS_PROC void FILESYS_API sack_filesys_enable_thread_mounts( void );
 /* internal (c library) file system is registered as prority 1000.... lower priorities are checked first for things like
   ScanFiles(), fopen( ..., "r" ), ... exists(), */
 FILESYS_PROC struct file_system_mounted_interface * FILESYS_API sack_mount_filesystem( const char *name, struct file_system_interface *, int priority, uintptr_t psvInstance, LOGICAL writable );
@@ -40250,15 +40293,18 @@ struct timer_local_data {
 	uint32_t remove_timer;
 	uint32_t CurrentTimerID;
 	int32_t last_sleep;
+	PLIST onThreadCreate;
 #define globalTimerData (*global_timer_structure)
 	volatile uint64_t lock_thread_create;
 	// should be a short list... 10 maybe 15...
 	PLIST thread_events;
 	CRITICALSECTION csGrab;
-#if defined( WIN32 )
+#if !HAS_TLS
+#  if defined( WIN32 )
 	DWORD my_thread_info_tls;
-#elif defined( __LINUX__ )
+#  elif defined( __LINUX__ )
 	pthread_key_t my_thread_info_tls;
+#  endif
 #endif
 }
 #ifdef __STATIC_GLOBALS__
@@ -40276,7 +40322,10 @@ struct my_thread_info {
 	PTHREAD pThread;
 	THREAD_ID nThread;
 };
-#define MyThreadInfo (*_MyThreadInfo)
+DeclareThreadLocal  struct my_thread_info _MyThreadInfo;
+#  define MyThreadInfo (_MyThreadInfo)
+#else
+#  define MyThreadInfo (*_MyThreadInfo)
 #endif
 #ifdef _WIN32
 #else
@@ -40295,14 +40344,15 @@ struct my_thread_info {
 #endif
 #endif
 void  RemoveTimerEx( uint32_t ID DBG_PASS );
+#if !HAS_TLS
 static struct my_thread_info* GetThreadTLS( void )
 {
 	struct my_thread_info* _MyThreadInfo;
-#if defined( WIN32 )
 #  ifndef __STATIC_GLOBALS__
 	if( !global_timer_structure )
 		SimpleRegisterAndCreateGlobal( global_timer_structure );
 #  endif
+#  if defined( WIN32 )
 	if( !( _MyThreadInfo = (struct my_thread_info*)TlsGetValue( global_timer_structure->my_thread_info_tls ) ) )
 	{
 		int old = SetAllocateLogging( FALSE );
@@ -40311,16 +40361,17 @@ static struct my_thread_info* GetThreadTLS( void )
 		_MyThreadInfo->nThread = 0;
 		_MyThreadInfo->pThread = 0;
 	}
-#elif defined( __LINUX__ )
+#  elif defined( __LINUX__ )
 	if( !( _MyThreadInfo = (struct my_thread_info*)pthread_getspecific( global_timer_structure->my_thread_info_tls ) ) )
 	{
 		pthread_setspecific( global_timer_structure->my_thread_info_tls, _MyThreadInfo = New( struct my_thread_info ) );
 		_MyThreadInfo->nThread = 0;
 		_MyThreadInfo->pThread = 0;
 	}
-#endif
-	return _MyThreadInfo;
+#  endif
+	return &MyThreadInfo;
 }
+#endif
 // this priorirty is also relative to a secondary init for procreg/names.c
 // if you change this, need to change when that is scheduled also
 PRIORITY_PRELOAD( LowLevelInit, CONFIG_SCRIPT_PRELOAD_PRIORITY-1 )
@@ -40332,10 +40383,12 @@ PRIORITY_PRELOAD( LowLevelInit, CONFIG_SCRIPT_PRELOAD_PRIORITY-1 )
 #  endif
 	if( !globalTimerData.timerID )
 	{
+#if !HAS_TLS
 #if defined( WIN32 )
 		globalTimerData.my_thread_info_tls = TlsAlloc();
 #elif defined( __LINUX__ )
 		pthread_key_create( &globalTimerData.my_thread_info_tls, NULL );
+#endif
 #endif
 		InitializeCriticalSec( &globalTimerData.csGrab );
 		// this may have initialized early?
@@ -40790,17 +40843,15 @@ static void  InternalWakeableNamedSleepEx( CTEXTSTR name, uint32_t n, LOGICAL th
 		pThread = FindWakeup( name );
 	else
 	{
-#ifdef HAS_TLS
+#if !HAS_TLS
 		struct my_thread_info* _MyThreadInfo = GetThreadTLS();
+#endif
 		pThread = MyThreadInfo.pThread;
 		if( !pThread )
 		{
 			MakeThread();
 			pThread = MyThreadInfo.pThread;
 		}
-#else
-		pThread = FindThread( GetMyThreadID() );
-#endif
 	}
 	if( pThread )
 	{
@@ -41048,7 +41099,9 @@ uintptr_t CPROC ThreadProc( PTHREAD pThread );
 int  IsThisThreadEx( PTHREAD pThreadTest DBG_PASS )
 {
 	PTHREAD pThread;
+#if !HAS_TLS
 	struct my_thread_info* _MyThreadInfo = GetThreadTLS();
+#endif
 	pThread
 #ifdef HAS_TLS
 		= MyThreadInfo.pThread;
@@ -41064,25 +41117,24 @@ int  IsThisThreadEx( PTHREAD pThreadTest DBG_PASS )
 static int NotTimerThread( void )
 {
 	PTHREAD pThread;
+#if !HAS_TLS
 	struct my_thread_info* _MyThreadInfo = GetThreadTLS();
-	pThread
-#ifdef HAS_TLS
-		= MyThreadInfo.pThread;
-#else
-		= FindThread( GetMyThreadID() );
 #endif
+	pThread = MyThreadInfo.pThread;
 	if( pThread && ( pThread->proc == ThreadProc ) )
 		return FALSE;
 	return TRUE;
 }
 //--------------------------------------------------------------------------
-void  UnmakeThread( void )
+static void  UnmakeThread( void )
 {
 	PTHREAD pThread;
+#if !HAS_TLS
 	struct my_thread_info* _MyThreadInfo = GetThreadTLS();
+#endif
 	uint64_t oldval;
  //-V595
-	while( oldval = LockedExchange64( &globalTimerData.lock_thread_create, _MyThreadInfo->nThread ) ) {
+	while( oldval = LockedExchange64( &globalTimerData.lock_thread_create, MyThreadInfo.nThread ) ) {
 		//globalTimerData.lock_thread_create = oldval;
 		Relinquish();
 	}
@@ -41103,10 +41155,14 @@ void  UnmakeThread( void )
 			//lprintf( "Unmaking thread event! on thread %016" _64fx"x", pThread->thread_ident );
 			CloseHandle( pThread->thread_event->hEvent );
 			{
+#  if !HAS_TLS
 				struct my_thread_info* _MyThreadInfo = GetThreadTLS();
-				Deallocate( struct my_thread_info*, _MyThreadInfo );
  //-V595
 				TlsSetValue( global_timer_structure->my_thread_info_tls, NULL );
+				Deallocate( struct my_thread_info*, _MyThreadInfo );
+#  else
+				//Deallocate( struct my_thread_info*, _MyThreadInfo );
+#  endif
 			}
 #else
 			closesem( (POINTER)pThread, 0 );
@@ -41134,7 +41190,9 @@ static uintptr_t CPROC ThreadWrapper( PTHREAD pThread )
 #endif
 {
 	uintptr_t result = 0;
+#if !HAS_TLS
 	struct my_thread_info* _MyThreadInfo = GetThreadTLS();
+#endif
 #ifdef _WIN32
 	while( !pThread->hThread )
 		Relinquish();
@@ -41154,6 +41212,13 @@ static uintptr_t CPROC ThreadWrapper( PTHREAD pThread )
 		pThread->thread_ident = _GetMyThreadID();
 	//DebugBreak();
 	InitWakeup( pThread, NULL );
+	{
+		INDEX idx;
+		void ( *f )( void );
+		LIST_FORALL( globalTimerData.onThreadCreate, idx,  void( * )( void ), f ){
+			f();
+		}
+	}
 #ifdef LOG_THREAD
 	Log1( "Set thread ident: %016" _64fx, pThread->thread_ident );
 #endif
@@ -41181,7 +41246,9 @@ static void *SimpleThreadWrapper( PTHREAD pThread )
 static uintptr_t CPROC SimpleThreadWrapper( PTHREAD pThread )
 #endif
 {
+#if !HAS_TLS
 	struct my_thread_info* _MyThreadInfo = GetThreadTLS();
+#endif
 	uintptr_t result = 0;
 #ifdef _WIN32
 	while( !pThread->hThread )
@@ -41193,11 +41260,8 @@ static uintptr_t CPROC SimpleThreadWrapper( PTHREAD pThread )
 	pThread->flags.bStarted = 1;
 	while( !pThread->flags.bReady )
 		Relinquish();
-#ifdef HAS_TLS
 	MyThreadInfo.pThread = pThread;
-	MyThreadInfo.nThread =
-#endif
-		pThread->thread_ident = GetMyThreadID();
+	MyThreadInfo.nThread = pThread->thread_ident = GetMyThreadID();
 	InitWakeup( pThread, NULL );
 #ifdef LOG_THREAD
 	Log1( "Set thread ident: %016" _64fx, pThread->thread_ident );
@@ -41216,18 +41280,17 @@ static uintptr_t CPROC SimpleThreadWrapper( PTHREAD pThread )
 //--------------------------------------------------------------------------
 PTHREAD  MakeThread( void )
 {
-#ifdef HAS_TLS
+#if !HAS_TLS
 	struct my_thread_info* _MyThreadInfo = GetThreadTLS();
+#endif
 	if( MyThreadInfo.pThread )
 		return MyThreadInfo.pThread;
 	MyThreadInfo.nThread = _GetMyThreadID();
-#endif
 	{
 		PTHREAD pThread;
 		THREAD_ID thread_ident = _GetMyThreadID();
-#ifndef HAS_TLS
+		// this must be a search(?)
 		if( !(pThread = FindThread( thread_ident ) ) )
-#endif
 		{
 			THREAD_ID oldval;
 			LOGICAL dontUnlock = FALSE;
@@ -41261,9 +41324,7 @@ PTHREAD  MakeThread( void )
 			    , pThread->proc, pThread->thread_ident, pThread );
 #endif
 		}
-#ifdef HAS_TLS
 		MyThreadInfo.pThread = pThread;
-#endif
 		return pThread;
 	}
 }
@@ -41275,16 +41336,14 @@ THREAD_ID GetThreadID( PTHREAD thread )
 }
 THREAD_ID GetThisThreadID( void )
 {
-#if HAS_TLS
+#if !HAS_TLS
 	struct my_thread_info* _MyThreadInfo = GetThreadTLS();
+#endif
 	if( !MyThreadInfo.nThread )
 	{
 		MyThreadInfo.nThread = _GetMyThreadID();
 	}
 	return MyThreadInfo.nThread;
-#else
-	return MakeThread()->thread_ident;
-#endif
 }
 uintptr_t GetThreadParam( PTHREAD thread )
 {
@@ -42421,16 +42480,18 @@ void DeleteCriticalSec( PCRITICALSECTION pcs )
 #ifdef _WIN32
 HANDLE  GetWakeEvent( void )
 {
-#if HAS_TLS
+#if !HAS_TLS
 	struct my_thread_info* _MyThreadInfo = GetThreadTLS();
-	if( !MyThreadInfo.pThread )
-		MakeThread();
-	return MyThreadInfo.pThread->thread_event->hEvent;
-#else
-	return MakeThread()->thread_event->hEvent;
 #endif
+	if( !MyThreadInfo.pThread ) MakeThread();
+	return MyThreadInfo.pThread->thread_event->hEvent;
 }
 #endif
+void OnThreadCreate( void (*f)(void) ) {
+	AddLink( &globalTimerData.onThreadCreate, f );
+}
+#undef GetThreadTLS
+#undef MyThreadInfo
 #ifdef __cplusplus
 //	namespace timers {
 }
@@ -62526,6 +62587,79 @@ void vesl_dispose_message( PDATALIST *msg_data )
 #endif
 //-----------------------------------------------------------------------
 FILESYS_NAMESPACE
+// have to include this in-namespace
+#ifdef _WIN32
+#define PATHCHAR "\\"
+#else
+#define PATHCHAR "/"
+#endif
+struct file_system_mounted_interface
+{
+	struct file_system_mounted_interface* nextLayer;
+	//struct file_system_mounted_interface* sideLayer; // mount-as...
+	struct file_system_mounted_interface* parent;
+	//DeclareLink( struct file_system_mounted_interface );
+	const char *name;
+	int priority;
+	uintptr_t psvInstance;
+	struct file_system_interface *fsi;
+	LOGICAL writeable;
+};
+#if !defined( WINFILE_COMMON_SOURCE ) && defined( __STATIC_GLOBALS__ )
+extern
+#endif
+ struct winfile_local_tag {
+	CRITICALSECTION cs_files;
+	PLIST files;
+	PLIST directories;
+	PLIST groups;
+	PLIST handles;
+	PLIST file_system_interface;
+	struct file_system_interface *default_file_system_interface;
+	struct file_system_mounted_interface *_mounted_file_systems;
+	struct file_system_mounted_interface *last_find_mount;
+	struct file_system_mounted_interface *_default_mount;
+	LOGICAL have_default;
+	struct {
+		BIT_FIELD bLogOpenClose : 1;
+		BIT_FIELD bInitialized : 1;
+		BIT_FIELD bDeallocateClosedFiles : 1;
+	} flags;
+	TEXTSTR local_data_file_root;
+	TEXTSTR data_file_root;
+	TEXTSTR producer;
+	TEXTSTR application;
+ }
+#ifdef __STATIC_GLOBALS__
+winfile_local__;
+#endif
+;
+#if HAS_TLS
+struct filesys_thread_mount_info {
+	struct file_system_mounted_interface* default_mount;
+	struct file_system_mounted_interface** _mounted_file_systems;
+#define mounted_file_systems _mounted_file_systems[0]
+	struct file_system_mounted_interface* thread_local_mounted_file_systems;
+	char* cwd;
+};
+#if !defined( WINFILE_COMMON_SOURCE )
+extern
+#endif
+	DeclareThreadVar  struct filesys_thread_mount_info _fileSysThreadInfo;
+#  define FileSysThreadInfo (_fileSysThreadInfo)
+#else
+#error "Please get a better platform target...."
+//#  define fileSysThreadInfo (*_fileSysThreadInfo)
+#endif
+#ifndef WINFILE_COMMON_SOURCE
+extern
+#endif
+	struct winfile_local_tag *winfile_local
+#if defined( __STATIC_GLOBALS__ ) && defined( WINFILE_COMMON_SOURCE )
+		   = &winfile_local__
+#endif
+	;
+//#define l (*winfile_local)
 	static char *currentPath
 #ifdef __EMSCRIPTEN__
        = "/home/web_user"
@@ -62575,6 +62709,11 @@ extern TEXTSTR ExpandPath( CTEXTSTR path );
 //-----------------------------------------------------------------------
 TEXTSTR GetCurrentPath( TEXTSTR path, int len )
 {
+	// allow thread to initialize itself with a real currentpath...
+	if( FileSysThreadInfo.cwd ) {
+		strncpy( path, FileSysThreadInfo.cwd, len );
+		return path;
+	}
 	if( !path )
 		return 0;
 #ifdef __EMSCRIPTEN__
@@ -62907,6 +63046,12 @@ int  MakePath ( CTEXTSTR path )
 //-----------------------------------------------------------------------
 int  SetCurrentPath ( CTEXTSTR path )
 {
+	TEXTSTR tmp = ExpandPath( path );
+	if( IsPath( tmp ) ) {
+		Release( FileSysThreadInfo.cwd );
+		FileSysThreadInfo.cwd = StrDup( tmp );
+		return 1;
+	}
 	int status = 1;
 	TEXTSTR tmp_path;
 	if( !path )
@@ -63036,7 +63181,7 @@ enum textModes {
 	TM_UTF_BOCU,
 	TM_UTF_GB_18030
 };
-struct file{
+struct file {
 	TEXTSTR name;
 	TEXTSTR fullname;
 	wchar_t* wfullname;
@@ -63048,7 +63193,7 @@ struct file{
 	enum   textModes textmode;
   // text file modes; skip existing BOM for seek purposes.
 	size_t file_start_offset;
-	struct file_system_mounted_interface *mount;
+	struct file_system_mounted_interface* mount;
  // allow covering for file systems that don't actually delete files that are still open
 	int    deleted;
  // has been deleted, but deletion failed (probably because it's open)
@@ -63065,64 +63210,12 @@ struct directory {
 struct file_interface_tracker
 {
 	CTEXTSTR name;
-	struct file_system_interface *fsi;
+	struct file_system_interface* fsi;
 };
 struct Group {
 	TEXTSTR name;
 	TEXTSTR base_path;
 };
-#ifdef _WIN32
-#define PATHCHAR "\\"
-#else
-#define PATHCHAR "/"
-#endif
-struct file_system_mounted_interface
-{
-	DeclareLink( struct file_system_mounted_interface );
-	const char *name;
-	int priority;
-	uintptr_t psvInstance;
-	struct file_system_interface *fsi;
-	LOGICAL writeable;
-};
-#if !defined( WINFILE_COMMON_SOURCE ) && defined( __STATIC_GLOBALS__ )
-extern
-#endif
- struct winfile_local_tag {
-	CRITICALSECTION cs_files;
-	PLIST files;
-	PLIST directories;
-	PLIST groups;
-	PLIST handles;
-	PLIST file_system_interface;
-	struct file_system_interface *default_file_system_interface;
-	struct file_system_mounted_interface *mounted_file_systems;
-	struct file_system_mounted_interface *last_find_mount;
-	struct file_system_mounted_interface *default_mount;
-	LOGICAL have_default;
-	struct {
-		BIT_FIELD bLogOpenClose : 1;
-		BIT_FIELD bInitialized : 1;
-		BIT_FIELD bDeallocateClosedFiles : 1;
-	} flags;
-	TEXTSTR local_data_file_root;
-	TEXTSTR data_file_root;
-	TEXTSTR producer;
-	TEXTSTR application;
- }
-#ifdef __STATIC_GLOBALS__
-winfile_local__;
-#endif
-;
-#ifndef WINFILE_COMMON_SOURCE
-extern
-#endif
-	struct winfile_local_tag *winfile_local
-#if defined( __STATIC_GLOBALS__ ) && defined( WINFILE_COMMON_SOURCE )
-		   = &winfile_local__
-#endif
-	;
-//#define l (*winfile_local)
 #ifdef _WIN32
 #  ifndef SHGFP_TYPE_CURRENT
 #    define SHGFP_TYPE_CURRENT 0
@@ -63143,48 +63236,57 @@ static void UpdateLocalDataPath( void )
 {
 #ifdef _WIN32
 	TEXTCHAR path[MAX_PATH];
-	TEXTCHAR *realpath;
+	TEXTCHAR* realpath;
 	size_t len;
 	SHGetFolderPathA( NULL, CSIDL_COMMON_APPDATA, NULL, SHGFP_TYPE_CURRENT, path );
 	realpath = NewArray( TEXTCHAR, len = StrLen( path )
-							  + StrLen( (*winfile_local).producer?(*winfile_local).producer:"" )
+		+ StrLen( ( *winfile_local ).producer ? ( *winfile_local ).producer : "" )
  // worse case +3
-							  + StrLen( (*winfile_local).application?(*winfile_local).application:"" ) + 3 );
+		+ StrLen( ( *winfile_local ).application ? ( *winfile_local ).application : "" ) + 3 );
 	tnprintf( realpath, len, "%s%s%s%s%s", path
-			  , (*winfile_local).producer?"/":"", (*winfile_local).producer?(*winfile_local).producer:""
-			  , (*winfile_local).application?"/":"", (*winfile_local).application?(*winfile_local).application:""
-			  );
-	if( (*winfile_local).data_file_root )
-		Deallocate( TEXTSTR, (*winfile_local).data_file_root );
-	(*winfile_local).data_file_root = realpath;
-	MakePath( (*winfile_local).data_file_root );
+		, ( *winfile_local ).producer ? "/" : "", ( *winfile_local ).producer ? ( *winfile_local ).producer : ""
+		, ( *winfile_local ).application ? "/" : "", ( *winfile_local ).application ? ( *winfile_local ).application : ""
+	);
+	if( ( *winfile_local ).data_file_root )
+		Deallocate( TEXTSTR, ( *winfile_local ).data_file_root );
+	( *winfile_local ).data_file_root = realpath;
+	MakePath( ( *winfile_local ).data_file_root );
 	SHGetFolderPathA( NULL, CSIDL_LOCAL_APPDATA, NULL, SHGFP_TYPE_CURRENT, path );
 	realpath = NewArray( TEXTCHAR, len = StrLen( path )
-							  + StrLen( (*winfile_local).producer?(*winfile_local).producer:"" )
+		+ StrLen( ( *winfile_local ).producer ? ( *winfile_local ).producer : "" )
  // worse case +3
-							  + StrLen( (*winfile_local).application?(*winfile_local).application:"" ) + 3 );
+		+ StrLen( ( *winfile_local ).application ? ( *winfile_local ).application : "" ) + 3 );
 	tnprintf( realpath, len, "%s%s%s%s%s", path
-			  , (*winfile_local).producer?"/":"", (*winfile_local).producer?(*winfile_local).producer:""
-			  , (*winfile_local).application?"/":"", (*winfile_local).application?(*winfile_local).application:""
-			  );
-	if( (*winfile_local).local_data_file_root )
-		Deallocate( TEXTSTR, (*winfile_local).local_data_file_root );
-	(*winfile_local).local_data_file_root = realpath;
-	MakePath( (*winfile_local).local_data_file_root );
+		, ( *winfile_local ).producer ? "/" : "", ( *winfile_local ).producer ? ( *winfile_local ).producer : ""
+		, ( *winfile_local ).application ? "/" : "", ( *winfile_local ).application ? ( *winfile_local ).application : ""
+	);
+	if( ( *winfile_local ).local_data_file_root )
+		Deallocate( TEXTSTR, ( *winfile_local ).local_data_file_root );
+	( *winfile_local ).local_data_file_root = realpath;
+	MakePath( ( *winfile_local ).local_data_file_root );
 #else
-	(*winfile_local).data_file_root = StrDup( "." );
-	(*winfile_local).local_data_file_root = StrDup( "." );
+	( *winfile_local ).data_file_root = StrDup( "." );
+	( *winfile_local ).local_data_file_root = StrDup( "." );
 #endif
 }
 void sack_set_common_data_producer( CTEXTSTR name )
 {
-	(*winfile_local).producer = StrDup( name );
+	( *winfile_local ).producer = StrDup( name );
 	UpdateLocalDataPath();
 }
 void sack_set_common_data_application( CTEXTSTR name )
 {
-	(*winfile_local).application = StrDup( name );
+	( *winfile_local ).application = StrDup( name );
 	UpdateLocalDataPath();
+}
+static void threadInit( void ) {
+ // edge case the main thread might init twice.
+	if( !FileSysThreadInfo.cwd ) {
+		FileSysThreadInfo.cwd = StrDup( "." );
+		FileSysThreadInfo.default_mount = ( *winfile_local )._default_mount;
+		FileSysThreadInfo._mounted_file_systems = &( *winfile_local )._mounted_file_systems;
+		//FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+	}
 }
 static void LocalInit( void )
 {
@@ -63192,12 +63294,14 @@ static void LocalInit( void )
 	if( !winfile_local )
 		SimpleRegisterAndCreateGlobal( winfile_local );
 #endif
-	if( !(*winfile_local).flags.bInitialized )
-	{
-		InitializeCriticalSec( &(*winfile_local).cs_files );
-		(*winfile_local).flags.bInitialized = 1;
+	OnThreadCreate( threadInit );
+  // this might or might not get dispatched already on this thread.
+	threadInit();
+	if( !( *winfile_local ).flags.bInitialized ) {
+		InitializeCriticalSec( &( *winfile_local ).cs_files );
+		( *winfile_local ).flags.bInitialized = 1;
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-		(*winfile_local).flags.bLogOpenClose = 0;
+		( *winfile_local ).flags.bLogOpenClose = 0;
 #endif
 		{
 #ifdef _WIN32
@@ -63208,8 +63312,8 @@ static void LocalInit( void )
 #else
 			{
 				char tmpPath[256];
-				snprintf( tmpPath, 256, "%s/%s", getenv("HOME"), ".Freedom Collective" );
-				(*winfile_local).data_file_root = StrDup( tmpPath );
+				snprintf( tmpPath, 256, "%s/%s", getenv( "HOME" ), ".Freedom Collective" );
+				( *winfile_local ).data_file_root = StrDup( tmpPath );
 				MakePath( tmpPath );
 			}
 			UpdateLocalDataPath();
@@ -63220,13 +63324,13 @@ static void LocalInit( void )
 }
 static void InitGroups( void )
 {
-	struct Group *group;
+	struct Group* group;
 	TEXTCHAR tmp[256];
 	// known handle '0' is 'default' which is CurrentWorkingDirectory at load.
 	group = New( struct Group );
 	group->base_path = StrDup( GetCurrentPath( tmp, sizeof( tmp ) ) );
 	group->name = StrDup( "Default" );
-	AddLink( &(*winfile_local).groups, group );
+	AddLink( &( *winfile_local ).groups, group );
 	// known handle '1' is the program's load path.
 	group = New( struct Group );
 #ifdef __ANDROID__
@@ -63236,36 +63340,33 @@ static void InitGroups( void )
 	group->base_path = StrDup( GetProgramPath() );
 #endif
 	group->name = StrDup( "Program Path" );
-	AddLink( &(*winfile_local).groups, group );
+	AddLink( &( *winfile_local ).groups, group );
 	// known handle '1' is the program's start path.
 	group = New( struct Group );
 	group->base_path = StrDup( GetStartupPath() );
 	group->name = StrDup( "Startup Path" );
-	AddLink( &(*winfile_local).groups, group );
-	(*winfile_local).have_default = TRUE;
+	AddLink( &( *winfile_local ).groups, group );
+	( *winfile_local ).have_default = TRUE;
 }
-static struct Group *GetGroupFilePath( CTEXTSTR group )
+static struct Group* GetGroupFilePath( CTEXTSTR group )
 {
-	struct Group *filegroup;
+	struct Group* filegroup;
 	INDEX idx;
-	if( !(*winfile_local).groups )
-	{
+	if( !( *winfile_local ).groups ) {
 		InitGroups();
 	}
-	LIST_FORALL( (*winfile_local).groups, idx, struct Group *, filegroup )
+	LIST_FORALL( ( *winfile_local ).groups, idx, struct Group*, filegroup )
 	{
-		if( StrCaseCmp( filegroup->name, group ) == 0 )
-		{
-		break;
+		if( StrCaseCmp( filegroup->name, group ) == 0 ) {
+			break;
 		}
 	}
 	return filegroup;
 }
-INDEX  GetFileGroup ( CTEXTSTR groupname, CTEXTSTR default_path )
+INDEX  GetFileGroup( CTEXTSTR groupname, CTEXTSTR default_path )
 {
-	struct Group *filegroup = GetGroupFilePath( groupname );
-	if( !filegroup )
-	{
+	struct Group* filegroup = GetGroupFilePath( groupname );
+	if( !filegroup ) {
 		{
 			TEXTCHAR tmp_ent[256];
 			TEXTCHAR tmp[256];
@@ -63274,7 +63375,7 @@ INDEX  GetFileGroup ( CTEXTSTR groupname, CTEXTSTR default_path )
 #ifdef __NO_OPTIONS__
 			tmp[0] = 0;
 #else
-			if( (*winfile_local).have_default ) {
+			if( ( *winfile_local ).have_default ) {
 				SACK_GetProfileString( GetProgramName(), tmp_ent, default_path ? default_path : NULL, tmp, sizeof( tmp ) );
 			}
 			else
@@ -63282,8 +63383,7 @@ INDEX  GetFileGroup ( CTEXTSTR groupname, CTEXTSTR default_path )
 #endif
 			if( tmp[0] )
 				default_path = tmp;
-			else if( default_path )
-			{
+			else if( default_path ) {
 #ifndef __NO_OPTIONS__
 				SACK_WriteProfileString( GetProgramName(), tmp_ent, default_path );
 #endif
@@ -63295,15 +63395,14 @@ INDEX  GetFileGroup ( CTEXTSTR groupname, CTEXTSTR default_path )
 			filegroup->base_path = StrDup( default_path );
 		else
 			filegroup->base_path = StrDup( "." );
-		AddLink( &(*winfile_local).groups, filegroup );
+		AddLink( &( *winfile_local ).groups, filegroup );
 	}
-	return FindLink( &(*winfile_local).groups, filegroup );
+	return FindLink( &( *winfile_local ).groups, filegroup );
 }
-TEXTSTR GetFileGroupText ( INDEX group, TEXTSTR path, int path_chars )
+TEXTSTR GetFileGroupText( INDEX group, TEXTSTR path, int path_chars )
 {
-	struct Group* filegroup = (struct Group *)GetLink( &(*winfile_local).groups, group );
-	if( !filegroup )
-	{
+	struct Group* filegroup = ( struct Group* )GetLink( &( *winfile_local ).groups, group );
+	if( !filegroup ) {
 		path[0] = 0;
 		return 0;
 	}
@@ -63321,27 +63420,25 @@ TEXTSTR ExpandPathVariable( CTEXTSTR path )
 	size_t  this_length;
 	INDEX   group;
 	struct  Group* filegroup;
-	if( path )
-	{
-		while( ( subst_path = (TEXTSTR)StrChr( tmp_path, '%' ) ) )
-		{
+	if( path ) {
+		while( ( subst_path = (TEXTSTR)StrChr( tmp_path, '%' ) ) ) {
 			end = (TEXTSTR)StrChr( ++subst_path, '%' );
 			//lprintf( "Found magic subst in string" );
 			if( end ) {
 				this_length = StrLen( tmp_path );
-				tmp = NewArray( TEXTCHAR, len = (end - subst_path) + 1 );
-				tnprintf( tmp, len * sizeof( TEXTCHAR ), "%*.*s", (int)(end - subst_path), (int)(end - subst_path), subst_path );
+				tmp = NewArray( TEXTCHAR, len = ( end - subst_path ) + 1 );
+				tnprintf( tmp, len * sizeof( TEXTCHAR ), "%*.*s", (int)( end - subst_path ), (int)( end - subst_path ), subst_path );
 				group = GetFileGroup( tmp, NULL );
 				if( group != INVALID_INDEX ) {
-					filegroup = (struct Group*)GetLink( &(*winfile_local).groups, group );
+					filegroup = ( struct Group* )GetLink( &( *winfile_local ).groups, group );
   // must deallocate tmp
 					Deallocate( TEXTCHAR*, tmp );
-					newest_path = NewArray( TEXTCHAR, len = (subst_path - tmp_path) + StrLen( filegroup->base_path ) + (this_length - (end - tmp_path)) + 1 );
+					newest_path = NewArray( TEXTCHAR, len = ( subst_path - tmp_path ) + StrLen( filegroup->base_path ) + ( this_length - ( end - tmp_path ) ) + 1 );
 					//=======================================================================
 					// Get rid of the ending '%' AND any '/' or '\' that might come after it
 					//=======================================================================
-					tnprintf( newest_path, len, "%*.*s%s/%s", (int)((subst_path - tmp_path) - 1), (int)((subst_path - tmp_path) - 1), tmp_path, filegroup->base_path,
-						((end + 1)[0] == '/' || (end + 1)[0] == '\\') ? (end + 2) : (end + 1) );
+					tnprintf( newest_path, len, "%*.*s%s/%s", (int)( ( subst_path - tmp_path ) - 1 ), (int)( ( subst_path - tmp_path ) - 1 ), tmp_path, filegroup->base_path,
+						( ( end + 1 )[0] == '/' || ( end + 1 )[0] == '\\' ) ? ( end + 2 ) : ( end + 1 ) );
 					Deallocate( TEXTCHAR*, tmp_path );
 					tmp_path = ExpandPathVariable( newest_path );
 					Deallocate( TEXTCHAR*, newest_path );
@@ -63351,12 +63448,12 @@ TEXTSTR ExpandPathVariable( CTEXTSTR path )
 					if( external_var ) {
   // must deallocate tmp
 						Deallocate( TEXTCHAR*, tmp );
-						newest_path = NewArray( TEXTCHAR, len = (subst_path - tmp_path) + StrLen( external_var ) + (this_length - (end - tmp_path)) + 1 );
+						newest_path = NewArray( TEXTCHAR, len = ( subst_path - tmp_path ) + StrLen( external_var ) + ( this_length - ( end - tmp_path ) ) + 1 );
 						//=======================================================================
 						// Get rid of the ending '%' AND any '/' or '\' that might come after it
 						//=======================================================================
-						tnprintf( newest_path, len, "%*.*s%s/%s", (int)((subst_path - tmp_path) - 1), (int)((subst_path - tmp_path) - 1), tmp_path, external_var,
-							((end + 1)[0] == '/' || (end + 1)[0] == '\\') ? (end + 2) : (end + 1) );
+						tnprintf( newest_path, len, "%*.*s%s/%s", (int)( ( subst_path - tmp_path ) - 1 ), (int)( ( subst_path - tmp_path ) - 1 ), tmp_path, external_var,
+							( ( end + 1 )[0] == '/' || ( end + 1 )[0] == '\\' ) ? ( end + 2 ) : ( end + 1 ) );
 						tmp_path = ExpandPathVariable( newest_path );
 						Deallocate( TEXTCHAR*, newest_path );
 					}
@@ -63364,7 +63461,7 @@ TEXTSTR ExpandPathVariable( CTEXTSTR path )
 						tmp_path = tmp;
 				}
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-				if( (*winfile_local).flags.bLogOpenClose )
+				if( ( *winfile_local ).flags.bLogOpenClose )
 					lprintf( "transform subst [%s]", tmp_path );
 #endif
 			}
@@ -63375,83 +63472,72 @@ TEXTSTR ExpandPathVariable( CTEXTSTR path )
 	}
 	return tmp_path;
 }
-TEXTSTR ExpandPathEx( CTEXTSTR path, struct file_system_interface *fsi )
+TEXTSTR ExpandPathEx( CTEXTSTR path, struct file_system_interface* fsi )
 {
 	TEXTSTR tmp_path = NULL;
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
+	if( ( *winfile_local ).flags.bLogOpenClose )
 		lprintf( "input path is [%s]", path );
 #endif
 	LocalInit();
-	if( path )
-	{
-		if( !fsi && !IsAbsolutePath( path ) )
-		{
-			if( ( path[0] == '.' ) && ( ( path[1] == 0 ) || ( path[1] == '/' ) || ( path[1] == '\\' ) ) )
-			{
+	if( path ) {
+		if( !fsi && !IsAbsolutePath( path ) ) {
+			if( ( path[0] == '.' ) && ( ( path[1] == 0 ) || ( path[1] == '/' ) || ( path[1] == '\\' ) ) ) {
 				TEXTCHAR here[256];
 				size_t len;
 				GetCurrentPath( here, sizeof( here ) );
 				tmp_path = NewArray( TEXTCHAR, len = ( StrLen( here ) + StrLen( path ) ) );
 				tnprintf( tmp_path, len, "%s%s%s"
-						 , here
-						 , path[1]?"/":""
-						 , path[1]?(path + 2):"" );
+					, here
+					, path[1] ? "/" : ""
+					, path[1] ? ( path + 2 ) : "" );
 			}
-			else if( ( path[0] == '@' ) && ( ( path[1] == '/' ) || ( path[1] == '\\' ) ) )
-			{
+			else if( ( path[0] == '@' ) && ( ( path[1] == '/' ) || ( path[1] == '\\' ) ) ) {
 				CTEXTSTR here;
 				size_t len;
 				here = GetLibraryPath();
 				tmp_path = NewArray( TEXTCHAR, len = ( StrLen( here ) + StrLen( path ) ) );
 				tnprintf( tmp_path, len, "%s/%s", here, path + 2 );
 			}
-			else if( ( path[0] == '#' ) && ( ( path[1] == '/' ) || ( path[1] == '\\' ) ) )
-			{
+			else if( ( path[0] == '#' ) && ( ( path[1] == '/' ) || ( path[1] == '\\' ) ) ) {
 				CTEXTSTR here;
 				size_t len;
 				here = GetProgramPath();
 				tmp_path = NewArray( TEXTCHAR, len = ( StrLen( here ) + StrLen( path ) ) );
 				tnprintf( tmp_path, len, "%s/%s", here, path + 2 );
 			}
-			else if( ( path[0] == '~' ) && ( ( path[1] == '/' ) || ( path[1] == '\\' ) ) )
-			{
+			else if( ( path[0] == '~' ) && ( ( path[1] == '/' ) || ( path[1] == '\\' ) ) ) {
 				CTEXTSTR here;
 				size_t len;
-				here = OSALOT_GetEnvironmentVariable("HOME");
+				here = OSALOT_GetEnvironmentVariable( "HOME" );
 				tmp_path = NewArray( TEXTCHAR, len = ( StrLen( here ) + StrLen( path ) ) );
 				tnprintf( tmp_path, len, "%s/%s", here, path + 2 );
 			}
-			else if( ( path[0] == '*' ) && ( ( path[1] == '/' ) || ( path[1] == '\\' ) ) )
-			{
+			else if( ( path[0] == '*' ) && ( ( path[1] == '/' ) || ( path[1] == '\\' ) ) ) {
 				CTEXTSTR here;
 				size_t len;
-				here = (*winfile_local).data_file_root;
+				here = ( *winfile_local ).data_file_root;
 				tmp_path = NewArray( TEXTCHAR, len = ( StrLen( here ) + StrLen( path ) ) );
 				tnprintf( tmp_path, len, "%s/%s", here, path + 2 );
 			}
-			else if( ( path[0] == ';' ) && ( ( path[1] == '/' ) || ( path[1] == '\\' ) ) )
-			{
+			else if( ( path[0] == ';' ) && ( ( path[1] == '/' ) || ( path[1] == '\\' ) ) ) {
 				CTEXTSTR here;
 				size_t len;
-				here = (*winfile_local).local_data_file_root;
+				here = ( *winfile_local ).local_data_file_root;
 				tmp_path = NewArray( TEXTCHAR, len = ( StrLen( here ) + StrLen( path ) ) );
 				tnprintf( tmp_path, len, "%s/%s", here, path + 2 );
 			}
-			else if( path[0] == '^' && ( ( path[1] == '/' ) || ( path[1] == '\\' ) ) )
-			{
+			else if( path[0] == '^' && ( ( path[1] == '/' ) || ( path[1] == '\\' ) ) ) {
 				CTEXTSTR here;
 				size_t len;
 				here = GetStartupPath();
 				tmp_path = NewArray( TEXTCHAR, len = ( StrLen( here ) + StrLen( path ) ) );
 				tnprintf( tmp_path, len, "%s/%s", here, path + 2 );
 			}
-			else if( path[0] == '%' )
-			{
+			else if( path[0] == '%' ) {
 				tmp_path = ExpandPathVariable( path );
 			}
-			else
-			{
+			else {
 				tmp_path = StrDup( path );
 			}
 #if __ANDROID__
@@ -63465,33 +63551,31 @@ TEXTSTR ExpandPathEx( CTEXTSTR path, struct file_system_interface *fsi )
 					len = StrLen( here );
 				else
 					len = 0;
-		/*
-				if( (*winfile_local).flags.bLogOpenClose )
-					lprintf( "Fix dots in [%s]", tmp_path );
-				for( ofs = len+1; tmp_path[ofs]; ofs++ )
-				{
-					if( tmp_path[ofs] == '/' )
-						tmp_path[ofs] = '.';
-					if( tmp_path[ofs] == '\\' )
-						tmp_path[ofs] = '.';
-				}
-				if( (*winfile_local).flags.bLogOpenClose )
-				lprintf( "Fixed result [%s]", tmp_path );
-			*/
+				/*
+						if( (*winfile_local).flags.bLogOpenClose )
+							lprintf( "Fix dots in [%s]", tmp_path );
+						for( ofs = len+1; tmp_path[ofs]; ofs++ )
+						{
+							if( tmp_path[ofs] == '/' )
+								tmp_path[ofs] = '.';
+							if( tmp_path[ofs] == '\\' )
+								tmp_path[ofs] = '.';
+						}
+						if( (*winfile_local).flags.bLogOpenClose )
+						lprintf( "Fixed result [%s]", tmp_path );
+					*/
 			}
 #endif
 		}
-		else if( StrChr( path, '%' ) != NULL )
-		{
+		else if( StrChr( path, '%' ) != NULL ) {
 			tmp_path = ExpandPathVariable( path );
 		}
-		else
-		{
+		else {
 			tmp_path = StrDup( path );
 		}
 	}
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
+	if( ( *winfile_local ).flags.bLogOpenClose )
 		lprintf( "output path is [%s]", tmp_path );
 #endif
 	return tmp_path;
@@ -63500,75 +63584,67 @@ TEXTSTR ExpandPath( CTEXTSTR path )
 {
 	return ExpandPathEx( path, NULL );
 }
-INDEX  SetGroupFilePath ( CTEXTSTR group, CTEXTSTR path )
+INDEX  SetGroupFilePath( CTEXTSTR group, CTEXTSTR path )
 {
-	struct Group *filegroup = GetGroupFilePath( group );
-	if( !filegroup )
-	{
+	struct Group* filegroup = GetGroupFilePath( group );
+	if( !filegroup ) {
 		TEXTCHAR tmp[256];
 		filegroup = New( struct Group );
 		filegroup->name = StrDup( group );
 		filegroup->base_path = StrDup( path );
 		tnprintf( tmp, sizeof( tmp ), "file group/%s", group );
 #ifndef __NO_OPTIONS__
-		if( (*winfile_local).have_default )
-		{
+		if( ( *winfile_local ).have_default ) {
 			TEXTCHAR tmp2[256];
 			SACK_GetProfileString( GetProgramName(), tmp, "", tmp2, sizeof( tmp2 ) );
-		if( StrCaseCmp( path, tmp2 ) )
+			if( StrCaseCmp( path, tmp2 ) )
 				SACK_WriteProfileString( GetProgramName(), tmp, path );
 		}
 #endif
-		AddLink( &(*winfile_local).groups, filegroup );
-		(*winfile_local).have_default = TRUE;
+		AddLink( &( *winfile_local ).groups, filegroup );
+		( *winfile_local ).have_default = TRUE;
 	}
-	else
-	{
+	else {
 		Deallocate( TEXTCHAR*, filegroup->base_path );
 		filegroup->base_path = StrDup( path );
 	}
-	return FindLink( &(*winfile_local).groups, filegroup );
+	return FindLink( &( *winfile_local ).groups, filegroup );
 }
 void SetDefaultFilePath( CTEXTSTR path )
 {
 	TEXTSTR tmp_path = NULL;
-	struct Group *filegroup;
+	struct Group* filegroup;
 	LocalInit();
-	filegroup = (struct Group *)GetLink( &(*winfile_local).groups, 0 );
+	filegroup = ( struct Group* )GetLink( &( *winfile_local ).groups, 0 );
 	tmp_path = ExpandPath( path );
-	if( (*winfile_local).groups && filegroup )
-	{
+	if( ( *winfile_local ).groups && filegroup ) {
 		Deallocate( TEXTSTR, filegroup->base_path );
-		filegroup->base_path = StrDup( tmp_path?tmp_path:path );
+		filegroup->base_path = StrDup( tmp_path ? tmp_path : path );
 	}
-	else
-	{
-		SetGroupFilePath( "Default", tmp_path?tmp_path:path );
+	else {
+		SetGroupFilePath( "Default", tmp_path ? tmp_path : path );
 	}
 	if( tmp_path )
 		Deallocate( TEXTCHAR*, tmp_path );
 }
-static TEXTSTR PrependBasePathEx( INDEX groupid, struct Group *group, CTEXTSTR filename, LOGICAL expand_path )
+static TEXTSTR PrependBasePathEx( INDEX groupid, struct Group* group, CTEXTSTR filename, LOGICAL expand_path )
 {
-	TEXTSTR real_filename = filename?ExpandPath( filename ):NULL;
+	TEXTSTR real_filename = filename ? ExpandPath( filename ) : NULL;
 	TEXTSTR fullname;
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
+	if( ( *winfile_local ).flags.bLogOpenClose )
 		lprintf( "Prepend to {%s} %p %" _size_f, real_filename, group, groupid );
 #endif
-	if( (*winfile_local).groups )
-	{
+	if( ( *winfile_local ).groups ) {
 		//SetDefaultFilePath( GetProgramPath() );
-		if( !group )
-		{
+		if( !group ) {
 			if( groupid < 4096 )
-				group = (struct Group *)GetLink( &(*winfile_local).groups, groupid );
+				group = ( struct Group* )GetLink( &( *winfile_local ).groups, groupid );
 		}
 	}
-	if( !group || ( filename && ( IsAbsolutePath( real_filename ) ) ) )
-	{
+	if( !group || ( filename && ( IsAbsolutePath( real_filename ) ) ) ) {
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-		if( (*winfile_local).flags.bLogOpenClose )
+		if( ( *winfile_local ).flags.bLogOpenClose )
 			lprintf( "already an absolute path.  [%s]", real_filename );
 #endif
 		return real_filename;
@@ -63580,10 +63656,10 @@ static TEXTSTR PrependBasePathEx( INDEX groupid, struct Group *group, CTEXTSTR f
 			tmp_path = ExpandPath( group->base_path );
 		else
 			tmp_path = group->base_path;
-		fullname = NewArray( TEXTCHAR, len = StrLen( filename ) + StrLen(tmp_path) + 2 );
+		fullname = NewArray( TEXTCHAR, len = StrLen( filename ) + StrLen( tmp_path ) + 2 );
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-		if( (*winfile_local).flags.bLogOpenClose )
-			lprintf("prepend %s[%s] with %s", group->base_path, tmp_path, filename );
+		if( ( *winfile_local ).flags.bLogOpenClose )
+			lprintf( "prepend %s[%s] with %s", group->base_path, tmp_path, filename );
 #endif
 		tnprintf( fullname, len, "%s/%s", tmp_path, real_filename );
 		{
@@ -63598,29 +63674,28 @@ static TEXTSTR PrependBasePathEx( INDEX groupid, struct Group *group, CTEXTSTR f
 			static TEXTCHAR here[256];
 			static size_t len;
 			size_t ofs;
-			if( !here[0] )
-			{
+			if( !here[0] ) {
 				GetCurrentPath( here, sizeof( here ) );
 			}
 			if( StrStr( tmp_path, here ) )
 				len = StrLen( here );
 			else
 				len = 0;
-		/*
-			if( (*winfile_local).flags.bLogOpenClose )
-				lprintf( "Fix dots in [%s]", fullname );
-			for( ofs = len+1; fullname[ofs]; ofs++ )
-			{
-				if( fullname[ofs] == '/' )
-					fullname[ofs] = '.';
-				if( fullname[ofs] == '\\' )
-					fullname[ofs] = '.';
-			}
-		*/
+			/*
+				if( (*winfile_local).flags.bLogOpenClose )
+					lprintf( "Fix dots in [%s]", fullname );
+				for( ofs = len+1; fullname[ofs]; ofs++ )
+				{
+					if( fullname[ofs] == '/' )
+						fullname[ofs] = '.';
+					if( fullname[ofs] == '\\' )
+						fullname[ofs] = '.';
+				}
+			*/
 		}
 #endif
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-		if( (*winfile_local).flags.bLogOpenClose )
+		if( ( *winfile_local ).flags.bLogOpenClose )
 			lprintf( "result %s", fullname );
 #endif
 		if( expand_path )
@@ -63629,13 +63704,13 @@ static TEXTSTR PrependBasePathEx( INDEX groupid, struct Group *group, CTEXTSTR f
 	}
 	return fullname;
 }
-static TEXTSTR PrependBasePath( INDEX groupid, struct Group *group, CTEXTSTR filename )
+static TEXTSTR PrependBasePath( INDEX groupid, struct Group* group, CTEXTSTR filename )
 {
-   return PrependBasePathEx(groupid,group,filename,TRUE );
+	return PrependBasePathEx( groupid, group, filename, TRUE );
 }
 TEXTSTR sack_prepend_path( INDEX group, CTEXTSTR filename )
 {
-	struct Group *filegroup = (struct Group *)GetLink( &(*winfile_local).groups, group );
+	struct Group* filegroup = ( struct Group* )GetLink( &( *winfile_local ).groups, group );
 	TEXTSTR result = PrependBasePath( group, filegroup, filename );
 	return result;
 }
@@ -63643,30 +63718,30 @@ TEXTSTR sack_prepend_path( INDEX group, CTEXTSTR filename )
 #define HANDLE int
 #define INVALID_HANDLE_VALUE -1
 #endif
-static void DetectUnicodeBOM( FILE *file ) {
-   //00 00 FE FF     UTF-32, big-endian
-   //FF FE 00 00     UTF-32, little-endian
-   //FE FF           UTF-16, big-endian
-   //FF FE           UTF-16, little-endian
-   //EF BB BF        UTF-8
-//Encoding	Representation (hexadecimal)	Representation (decimal)	Bytes as CP1252 characters
-//UTF-8[t 1]		EF BB BF		239 187 191
-//UTF-16 (BE)		FE FF			254 255
-//UTF-16 (LE)		FF FE			255 254
-//UTF-32 (BE)		00 00 FE FF		0 0 254 255
-//UTF-32 (LE)		FF FE 00 00[t 2]	255 254 0 0
-//UTF-7[t 1]		2B 2F 76 38             43 47 118 56	+/v9
-//			2B 2F 76 39		43 47 118 43	+/v+
-//			2B 2F 76 2B             43 47 118 47	+/v/
-//			2B 2F 76 2F[t 3]	43 47 118 57	+/v8
-//			2B 2F 76 38 2D[t 4]	43 47 118 56 45	+/v8-
-//
-//UTF-1[t 1]		F7 64 4C	247 100 76
-//UTF-EBCDIC[t 1]	DD 73 66 73	221 115 102 115
-//SCSU[t 1]		0E FE FF[t 5]	14 254 255
-//BOCU-1[t 1]		FB EE 28	251 238 40
-//GB-18030[t 1]		84 31 95 33	132 49 149 51
-	struct file* _file = (struct file*)file;
+static void DetectUnicodeBOM( FILE* file ) {
+	//00 00 FE FF     UTF-32, big-endian
+	//FF FE 00 00     UTF-32, little-endian
+	//FE FF           UTF-16, big-endian
+	//FF FE           UTF-16, little-endian
+	//EF BB BF        UTF-8
+ //Encoding	Representation (hexadecimal)	Representation (decimal)	Bytes as CP1252 characters
+ //UTF-8[t 1]		EF BB BF		239 187 191
+ //UTF-16 (BE)		FE FF			254 255
+ //UTF-16 (LE)		FF FE			255 254
+ //UTF-32 (BE)		00 00 FE FF		0 0 254 255
+ //UTF-32 (LE)		FF FE 00 00[t 2]	255 254 0 0
+ //UTF-7[t 1]		2B 2F 76 38             43 47 118 56	+/v9
+ //			2B 2F 76 39		43 47 118 43	+/v+
+ //			2B 2F 76 2B             43 47 118 47	+/v/
+ //			2B 2F 76 2F[t 3]	43 47 118 57	+/v8
+ //			2B 2F 76 38 2D[t 4]	43 47 118 56 45	+/v8-
+ //
+ //UTF-1[t 1]		F7 64 4C	247 100 76
+ //UTF-EBCDIC[t 1]	DD 73 66 73	221 115 102 115
+ //SCSU[t 1]		0E FE FF[t 5]	14 254 255
+ //BOCU-1[t 1]		FB EE 28	251 238 40
+ //GB-18030[t 1]		84 31 95 33	132 49 149 51
+	struct file* _file = ( struct file* )file;
 	// file was opened with 't' flag, test what sort of 't' the file might be.
 	// can result in conversion based on UNICODE (utf-16) compilation flag is set or not (UTF8).
 	if( _file->textmode == TM_UNKNOWN ) {
@@ -63686,34 +63761,41 @@ static void DetectUnicodeBOM( FILE *file ) {
 			if( bytes[1] == 0xBB && bytes[2] == 0xBF ) {
 				_file->textmode = TM_UTF8;
 				sack_fseek( file, 3, SEEK_SET );
-			} else {
+			}
+			else {
 				_file->textmode = TM_UTF8;
 			}
-		} else if( bytes[0] == 0xFF ) {
+		}
+		else if( bytes[0] == 0xFF ) {
 			// UTF32/16 LE test
 			if( bytes[1] == 0xFE ) {
 				if( bytes[2] == 0 && bytes[3] == 0 ) {
 					_file->textmode = TM_UTF32LE;
 				}
 			}
-		} else if( bytes[0] == 0xFE ) {
+		}
+		else if( bytes[0] == 0xFE ) {
 			// UTF16ZBE test
 			if( bytes[1] == 0xFF ) {
 				_file->textmode = TM_UTF16BE;
-			} else {
+			}
+			else {
 				_file->textmode = TM_UTF8;
 			}
-		} else if( bytes[0] == 0 && bytes[1] == 0 ) {
+		}
+		else if( bytes[0] == 0 && bytes[1] == 0 ) {
 			// UTF32BE test...
 			if( bytes[2] == 0xFE && bytes[3] == 0xFF ) {
 				_file->textmode = TM_UTF32BE;
-			} else
+			}
+			else
 				_file->textmode = TM_UTF8;
-		} else {
+		}
+		else {
 		}
 	}
 }
-static void DecodeFopenOpts( struct file *file, CTEXTSTR opts ) {
+static void DecodeFopenOpts( struct file* file, CTEXTSTR opts ) {
 	CTEXTSTR op = opts;
 	for( ; op[0]; op++ ) {
 		if( op[0] == 'w' || op[0] == 'a' || op[0] == 'r' || op[0] == '+' )
@@ -63721,11 +63803,13 @@ static void DecodeFopenOpts( struct file *file, CTEXTSTR opts ) {
 		if( op[0] == ' ' ) continue;
 		if( op[0] == 't' ) {
 			file->textmode = TM_UNKNOWN;
-		} else if( op[0] == 'b' ) {
+		}
+		else if( op[0] == 'b' ) {
  // also the default.
 			file->textmode = TM_BINARY;
-		} else if( op[0] == ',' ) {
-			const char *restore = op;
+		}
+		else if( op[0] == ',' ) {
+			const char* restore = op;
 			op++;
 			while( op[0] == ' ' ) op++;
 			if( op[0] == 'c' ) op++; else { op = restore; continue; }
@@ -63770,20 +63854,18 @@ static void DecodeFopenOpts( struct file *file, CTEXTSTR opts ) {
 HANDLE sack_open( INDEX group, CTEXTSTR filename, int opts, ... )
 {
 	HANDLE handle;
-	struct file *file;
+	struct file* file;
 	INDEX idx;
-	EnterCriticalSec( &(*winfile_local).cs_files );
-	LIST_FORALL( (*winfile_local).files, idx, struct file *, file )
+	EnterCriticalSec( &( *winfile_local ).cs_files );
+	LIST_FORALL( ( *winfile_local ).files, idx, struct file*, file )
 	{
-		if( StrCmp( file->name, filename ) == 0 )
-		{
+		if( StrCmp( file->name, filename ) == 0 ) {
 			break;
 		}
 	}
-	LeaveCriticalSec( &(*winfile_local).cs_files );
-	if( !file )
-	{
-		struct Group *filegroup = (struct Group *)GetLink( &(*winfile_local).groups, group );
+	LeaveCriticalSec( &( *winfile_local ).cs_files );
+	if( !file ) {
+		struct Group* filegroup = ( struct Group* )GetLink( &( *winfile_local ).groups, group );
 		file = New( struct file );
 		file->deleted = file->delete_on_close = 0;
 		file->name = StrDup( filename );
@@ -63792,104 +63874,101 @@ HANDLE sack_open( INDEX group, CTEXTSTR filename, int opts, ... )
 		file->handles = NULL;
 		file->files = NULL;
 		file->group = group;
-		EnterCriticalSec( &(*winfile_local).cs_files );
-		AddLink( &(*winfile_local).files,file );
-		LeaveCriticalSec( &(*winfile_local).cs_files );
+		EnterCriticalSec( &( *winfile_local ).cs_files );
+		AddLink( &( *winfile_local ).files, file );
+		LeaveCriticalSec( &( *winfile_local ).cs_files );
 	}
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
+	if( ( *winfile_local ).flags.bLogOpenClose )
 		lprintf( "Open File: [%s]", file->fullname );
 #endif
 #ifdef __LINUX__
 #  undef open
 	{
 #  ifdef UNICODE
-		char *tmpfile = CStrDup( file->fullname );
+		char* tmpfile = CStrDup( file->fullname );
 		handle = open( tmpfile, opts );
-		Deallocate( char *, tmpfile );
+		Deallocate( char*, tmpfile );
 #  else
 		handle = open( file->fullname, opts );
 #  endif
 	}
 #  if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
+	if( ( *winfile_local ).flags.bLogOpenClose )
 		lprintf( "open %s %d %d", file->fullname, handle, opts );
 #  endif
 #else
-	switch( opts & 3 )
-	{
+	switch( opts & 3 ) {
 	case 0:
 	default:
-	handle = CreateFileW( file->wfullname
-							, GENERIC_READ
-							, FILE_SHARE_READ
-							, NULL
-							, ((opts&O_CREAT)?CREATE_ALWAYS:OPEN_EXISTING)
-							, FILE_ATTRIBUTE_NORMAL
-							, NULL );
-	break;
+		handle = CreateFileW( file->wfullname
+			, GENERIC_READ
+			, FILE_SHARE_READ
+			, NULL
+			, ( ( opts & O_CREAT ) ? CREATE_ALWAYS : OPEN_EXISTING )
+			, FILE_ATTRIBUTE_NORMAL
+			, NULL );
+		break;
 	case 1:
-	handle = CreateFileW( file->wfullname
-							, GENERIC_WRITE
-							, FILE_SHARE_READ|FILE_SHARE_WRITE
-							, NULL
-							, ((opts&O_CREAT)?CREATE_ALWAYS:OPEN_EXISTING)
-							, FILE_ATTRIBUTE_NORMAL
-							, NULL );
+		handle = CreateFileW( file->wfullname
+			, GENERIC_WRITE
+			, FILE_SHARE_READ | FILE_SHARE_WRITE
+			, NULL
+			, ( ( opts & O_CREAT ) ? CREATE_ALWAYS : OPEN_EXISTING )
+			, FILE_ATTRIBUTE_NORMAL
+			, NULL );
 		break;
 	case 2:
 	case 3:
-	handle = CreateFileW( file->wfullname
-							,(GENERIC_READ|GENERIC_WRITE)
-							, FILE_SHARE_READ|FILE_SHARE_WRITE
-							, NULL
-							, ((opts&O_CREAT)?CREATE_ALWAYS:OPEN_EXISTING)
-							, FILE_ATTRIBUTE_NORMAL
-							, NULL );
-	break;
+		handle = CreateFileW( file->wfullname
+			, ( GENERIC_READ | GENERIC_WRITE )
+			, FILE_SHARE_READ | FILE_SHARE_WRITE
+			, NULL
+			, ( ( opts & O_CREAT ) ? CREATE_ALWAYS : OPEN_EXISTING )
+			, FILE_ATTRIBUTE_NORMAL
+			, NULL );
+		break;
 	}
 #  if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
+	if( ( *winfile_local ).flags.bLogOpenClose )
 		lprintf( "open %s %p %08x", file->fullname, (POINTER)handle, opts );
 #  endif
 #endif
-	if( handle == INVALID_HANDLE_VALUE )
-	{
+	if( handle == INVALID_HANDLE_VALUE ) {
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-		if( (*winfile_local).flags.bLogOpenClose )
+		if( ( *winfile_local ).flags.bLogOpenClose )
 			lprintf( "Failed to open file [%s]=[%s]", file->name, file->fullname );
 #endif
 		return INVALID_HANDLE_VALUE;
 	}
-	if( handle != INVALID_HANDLE_VALUE )
-	{
-		HANDLE *holder = New( HANDLE );
+	if( handle != INVALID_HANDLE_VALUE ) {
+		HANDLE* holder = New( HANDLE );
 		holder[0] = handle;
 		AddLink( &file->handles, holder );
 	}
 	return handle;
 }
 #ifdef WIN32
-HANDLE sack_openfile( INDEX group,CTEXTSTR filename, OFSTRUCT *of, int flags )
+HANDLE sack_openfile( INDEX group, CTEXTSTR filename, OFSTRUCT* of, int flags )
 {
 #ifdef _UNICODE
-	char *tmpname = WcharConvert( filename );
+	char* tmpname = WcharConvert( filename );
 #undef OpenFile
-	HANDLE result = (HANDLE)OpenFile(tmpname,of,flags);
+	HANDLE result = (HANDLE)OpenFile( tmpname, of, flags );
 	Deallocate( char*, tmpname );
 	return result;
 #else
 #undef OpenFile
-	return (HANDLE)(uintptr_t)OpenFile(filename,of,flags);
+	return (HANDLE)(uintptr_t)OpenFile( filename, of, flags );
 #endif
 }
 #endif
-struct file *FindFileByHandle( HANDLE file_file )
+struct file* FindFileByHandle( HANDLE file_file )
 {
-	struct file *file;
+	struct file* file;
 	INDEX idx;
-	EnterCriticalSec( &(*winfile_local).cs_files );
-	LIST_FORALL( (*winfile_local).files, idx, struct file *, file )
+	EnterCriticalSec( &( *winfile_local ).cs_files );
+	LIST_FORALL( ( *winfile_local ).files, idx, struct file*, file )
 	{
 		INDEX idx2;
 		HANDLE* check;
@@ -63901,14 +63980,14 @@ struct file *FindFileByHandle( HANDLE file_file )
 		if( check )
 			break;
 	}
-	LeaveCriticalSec( &(*winfile_local).cs_files );
+	LeaveCriticalSec( &( *winfile_local ).cs_files );
 	return file;
 }
 //----------------------------------------------------------------------------
-LOGICAL sack_iset_eof ( INDEX file_handle )
+LOGICAL sack_iset_eof( INDEX file_handle )
 {
-	HANDLE *holder = (HANDLE*)GetLink( &(*winfile_local).handles, file_handle );
-	HANDLE handle = holder?holder[0]:INVALID_HANDLE_VALUE;
+	HANDLE* holder = (HANDLE*)GetLink( &( *winfile_local ).handles, file_handle );
+	HANDLE handle = holder ? holder[0] : INVALID_HANDLE_VALUE;
 #ifdef _WIN32
 	return SetEndOfFile( handle );
 #else
@@ -63916,17 +63995,17 @@ LOGICAL sack_iset_eof ( INDEX file_handle )
 #endif
 }
 //----------------------------------------------------------------------------
-struct file *FindFileByFILE( FILE *file_file )
+struct file* FindFileByFILE( FILE* file_file )
 {
-	struct file *file;
+	struct file* file;
 	INDEX idx;
 	LocalInit();
-	EnterCriticalSec( &(*winfile_local).cs_files );
-	LIST_FORALL( (*winfile_local).files, idx, struct file *, file )
+	EnterCriticalSec( &( *winfile_local ).cs_files );
+	LIST_FORALL( ( *winfile_local ).files, idx, struct file*, file )
 	{
 		INDEX idx2;
-		FILE *check;
-		LIST_FORALL( file->files, idx2, FILE *, check )
+		FILE* check;
+		LIST_FORALL( file->files, idx2, FILE*, check )
 		{
 			if( check == file_file )
 				break;
@@ -63934,22 +64013,21 @@ struct file *FindFileByFILE( FILE *file_file )
 		if( check )
 			break;
 	}
-	LeaveCriticalSec( &(*winfile_local).cs_files );
+	LeaveCriticalSec( &( *winfile_local ).cs_files );
 	return file;
 }
 //----------------------------------------------------------------------------
-struct file *FindFileByName( INDEX group, char const *filename, struct file_system_mounted_interface *mount, INDEX *allocedIndex )
+struct file* FindFileByName( INDEX group, char const* filename, struct file_system_mounted_interface* mount, INDEX* allocedIndex )
 {
-	struct file *file;
+	struct file* file;
 	INDEX idx;
 	LocalInit();
-	EnterCriticalSec( &(*winfile_local).cs_files );
-	LIST_FORALL( (*winfile_local).files, idx, struct file *, file )
+	EnterCriticalSec( &( *winfile_local ).cs_files );
+	LIST_FORALL( ( *winfile_local ).files, idx, struct file*, file )
 	{
 		if( ( file->group == group )
 			&& ( StrCmp( file->name, filename ) == 0 )
-			&& ( (!mount) || file->mount == mount ) )
-		{
+			&& ( ( !mount ) || file->mount == mount ) ) {
 			if( allocedIndex ) {
 				AddLink( &file->files, allocedIndex );
 				allocedIndex[0] = FindLink( &file->files, allocedIndex );
@@ -63957,23 +64035,20 @@ struct file *FindFileByName( INDEX group, char const *filename, struct file_syst
 			break;
 		}
 	}
-	LeaveCriticalSec( &(*winfile_local).cs_files );
+	LeaveCriticalSec( &( *winfile_local ).cs_files );
 	return file;
 }
 //----------------------------------------------------------------------------
-LOGICAL sack_set_eof ( HANDLE file_handle )
+LOGICAL sack_set_eof( HANDLE file_handle )
 {
-	struct file *file;
+	struct file* file;
 	file = FindFileByFILE( (FILE*)(uintptr_t)file_handle );
-	if( file )
-	{
-		if( file->mount )
-		{
+	if( file ) {
+		if( file->mount ) {
 			file->mount->fsi->truncate( (void*)(uintptr_t)file_handle );
 			//lprintf( "result is %d", file->mount->fsi->size( (void*)file_handle ) );
 		}
-		else
-		{
+		else {
 #ifdef _WIN32
 			;
 #else
@@ -63982,10 +64057,9 @@ LOGICAL sack_set_eof ( HANDLE file_handle )
 		}
 		return TRUE;
 	}
-	else
-	{
-		HANDLE *holder = (HANDLE*)GetLink( &(*winfile_local).handles, (INDEX)file_handle );
-		HANDLE handle = holder?holder[0]:INVALID_HANDLE_VALUE;
+	else {
+		HANDLE* holder = (HANDLE*)GetLink( &( *winfile_local ).handles, (INDEX)file_handle );
+		HANDLE handle = holder ? holder[0] : INVALID_HANDLE_VALUE;
 #ifdef _WIN32
 		return SetEndOfFile( handle );
 #else
@@ -63994,19 +64068,16 @@ LOGICAL sack_set_eof ( HANDLE file_handle )
 	}
 }
 //----------------------------------------------------------------------------
-int sack_ftruncate( FILE *file_file )
+int sack_ftruncate( FILE* file_file )
 {
-	struct file *file;
+	struct file* file;
 	file = FindFileByFILE( file_file );
-	if( file )
-	{
-		if( file->mount && file->mount->fsi )
-		{
+	if( file ) {
+		if( file->mount && file->mount->fsi ) {
 			file->mount->fsi->truncate( (void*)file_file );
 			//lprintf( "result is %d", file->mount->fsi->size( (void*)file_file ) );
 		}
-		else
-		{
+		else {
 #ifdef _WIN32
 			return _chsize( _fileno( file_file ), ftell( file_file ) ) == 0;
 #else
@@ -64020,17 +64091,17 @@ int sack_ftruncate( FILE *file_file )
 //----------------------------------------------------------------------------
 long sack_tell( INDEX file_handle )
 {
-	HANDLE *holder = (HANDLE*)GetLink( &(*winfile_local).handles, file_handle );
-	HANDLE handle = holder?holder[0]:INVALID_HANDLE_VALUE;
+	HANDLE* holder = (HANDLE*)GetLink( &( *winfile_local ).handles, file_handle );
+	HANDLE handle = holder ? holder[0] : INVALID_HANDLE_VALUE;
 #ifdef WIN32
  // must have GENERIC_READ and/or GENERIC_WRITE
 	uint32_t length = SetFilePointer( handle
 	// do not move pointer
-								, 0
+		, 0
   // hFile is not large enough to need this pointer
-								, NULL
+		, NULL
   // provides offset from current position
-								, FILE_CURRENT);
+		, FILE_CURRENT );
 	return length;
 #else
 	return lseek( handle, 0, SEEK_SET );
@@ -64045,7 +64116,7 @@ HANDLE sack_creat( INDEX group, CTEXTSTR file, int opts, ... )
 int sack_lseek( HANDLE file_handle, int pos, int whence )
 {
 #ifdef _WIN32
-	return SetFilePointer(file_handle,pos,NULL,whence);
+	return SetFilePointer( file_handle, pos, NULL, whence );
 #else
 	return lseek( file_handle, pos, whence );
 #endif
@@ -64056,7 +64127,7 @@ int sack_read( HANDLE file_handle, POINTER buffer, int size )
 #ifdef _WIN32
 	DWORD dwLastReadResult;
 	//lprintf( "..." );
-	return (ReadFile( (HANDLE)file_handle, buffer, size, &dwLastReadResult, NULL )?dwLastReadResult:-1 );
+	return ( ReadFile( (HANDLE)file_handle, buffer, size, &dwLastReadResult, NULL ) ? dwLastReadResult : -1 );
 #else
 	return read( file_handle, buffer, size );
 #endif
@@ -64066,7 +64137,7 @@ int sack_write( HANDLE file_handle, CPOINTER buffer, int size )
 {
 #ifdef _WIN32
 	DWORD dwLastWrittenResult;
-	return (WriteFile( (HANDLE)file_handle, (POINTER)buffer, size, &dwLastWrittenResult, NULL )?dwLastWrittenResult:-1 );
+	return ( WriteFile( (HANDLE)file_handle, (POINTER)buffer, size, &dwLastWrittenResult, NULL ) ? dwLastWrittenResult : -1 );
 #else
 	return write( file_handle, buffer, size );
 #endif
@@ -64079,12 +64150,11 @@ INDEX sack_icreat( INDEX group, CTEXTSTR file, int opts, ... )
 //----------------------------------------------------------------------------
 int sack_close( HANDLE file_handle )
 {
-	struct file *file = FindFileByHandle( (HANDLE)file_handle );
-	if( file )
-	{
+	struct file* file = FindFileByHandle( (HANDLE)file_handle );
+	if( file ) {
 		SetLink( &file->handles, (INDEX)file_handle, NULL );
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-		if( (*winfile_local).flags.bLogOpenClose )
+		if( ( *winfile_local ).flags.bLogOpenClose )
 			lprintf( "Close %s", file->fullname );
 #endif
 		Deallocate( wchar_t*, file->wfullname );
@@ -64096,7 +64166,7 @@ int sack_close( HANDLE file_handle )
 	}
 	if( file_handle != INVALID_HANDLE_VALUE )
 #ifdef _WIN32
-		return CloseHandle((HANDLE)file_handle);
+		return CloseHandle( (HANDLE)file_handle );
 #else
 		return close( file_handle );
 #endif
@@ -64108,24 +64178,23 @@ INDEX sack_iopen( INDEX group, CTEXTSTR filename, int opts, ... )
 	HANDLE h;
 	INDEX result;
 	h = sack_open( group, filename, opts );
-	if( h == INVALID_HANDLE_VALUE )
-	{
+	if( h == INVALID_HANDLE_VALUE ) {
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-		if( (*winfile_local).flags.bLogOpenClose )
+		if( ( *winfile_local ).flags.bLogOpenClose )
 			lprintf( "Failed to open %s", filename );
 #endif
 		return INVALID_INDEX;
 	}
-	EnterCriticalSec( &(*winfile_local).cs_files );
+	EnterCriticalSec( &( *winfile_local ).cs_files );
 	{
-		HANDLE *holder = New( HANDLE );
+		HANDLE* holder = New( HANDLE );
 		holder[0] = h;
-		AddLink( &(*winfile_local).handles, holder );
-		result = FindLink( &(*winfile_local).handles, holder );
+		AddLink( &( *winfile_local ).handles, holder );
+		result = FindLink( &( *winfile_local ).handles, holder );
 	}
-	LeaveCriticalSec( &(*winfile_local).cs_files );
+	LeaveCriticalSec( &( *winfile_local ).cs_files );
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
+	if( ( *winfile_local ).flags.bLogOpenClose )
 		lprintf( "return iopen of [%s]=%p(%" _size_f ")?", filename, (void*)(uintptr_t)h, (size_t)result );
 #endif
 	return result;
@@ -64134,46 +64203,46 @@ INDEX sack_iopen( INDEX group, CTEXTSTR filename, int opts, ... )
 int sack_iclose( INDEX file_handle )
 {
 	int result;
-	EnterCriticalSec( &(*winfile_local).cs_files );
+	EnterCriticalSec( &( *winfile_local ).cs_files );
 	{
-		HANDLE *holder = (HANDLE*)GetLink( &(*winfile_local).handles, file_handle );
-		HANDLE handle = holder?holder[0]:INVALID_HANDLE_VALUE;
-		SetLink( &(*winfile_local).handles, file_handle, 0 );
+		HANDLE* holder = (HANDLE*)GetLink( &( *winfile_local ).handles, file_handle );
+		HANDLE handle = holder ? holder[0] : INVALID_HANDLE_VALUE;
+		SetLink( &( *winfile_local ).handles, file_handle, 0 );
 		Deallocate( HANDLE*, holder );
 		result = sack_close( handle );
 	}
-	LeaveCriticalSec( &(*winfile_local).cs_files );
+	LeaveCriticalSec( &( *winfile_local ).cs_files );
 	return result;
 }
 //----------------------------------------------------------------------------
 int sack_ilseek( INDEX file_handle, size_t pos, int whence )
 {
 	int result;
-	EnterCriticalSec( &(*winfile_local).cs_files );
+	EnterCriticalSec( &( *winfile_local ).cs_files );
 	{
-		 HANDLE *holder = (HANDLE*)GetLink( &(*winfile_local).handles, file_handle );
-		 HANDLE handle = holder?holder[0]:INVALID_HANDLE_VALUE;
+		HANDLE* holder = (HANDLE*)GetLink( &( *winfile_local ).handles, file_handle );
+		HANDLE handle = holder ? holder[0] : INVALID_HANDLE_VALUE;
 #ifdef _WIN32
-		result = SetFilePointer(handle,(LONG)pos,((PLONG)&pos)+1,whence);
+		result = SetFilePointer( handle, (LONG)pos, ( (PLONG)&pos ) + 1, whence );
 #else
 		result = lseek( handle, pos, whence );
 #endif
 	}
-	LeaveCriticalSec( &(*winfile_local).cs_files );
+	LeaveCriticalSec( &( *winfile_local ).cs_files );
 	return result;
 }
 //----------------------------------------------------------------------------
 int sack_iread( INDEX file_handle, POINTER buffer, int size )
 {
-	EnterCriticalSec( &(*winfile_local).cs_files );
+	EnterCriticalSec( &( *winfile_local ).cs_files );
 	{
-		 HANDLE *holder = (HANDLE*)GetLink( &(*winfile_local).handles, file_handle );
-		 HANDLE handle = holder?holder[0]:INVALID_HANDLE_VALUE;
+		HANDLE* holder = (HANDLE*)GetLink( &( *winfile_local ).handles, file_handle );
+		HANDLE handle = holder ? holder[0] : INVALID_HANDLE_VALUE;
 #ifdef _WIN32
 		DWORD dwLastReadResult;
 		//lprintf( "... %p %p", file_handle, h );
-		LeaveCriticalSec( &(*winfile_local).cs_files );
-		return (ReadFile( handle, (POINTER)buffer, size, &dwLastReadResult, NULL )?dwLastReadResult:-1 );
+		LeaveCriticalSec( &( *winfile_local ).cs_files );
+		return ( ReadFile( handle, (POINTER)buffer, size, &dwLastReadResult, NULL ) ? dwLastReadResult : -1 );
 #else
 		return read( handle, buffer, size );
 #endif
@@ -64182,40 +64251,38 @@ int sack_iread( INDEX file_handle, POINTER buffer, int size )
 //----------------------------------------------------------------------------
 int sack_iwrite( INDEX file_handle, CPOINTER buffer, int size )
 {
-	EnterCriticalSec( &(*winfile_local).cs_files );
+	EnterCriticalSec( &( *winfile_local ).cs_files );
 	{
-		 HANDLE *holder = (HANDLE*)GetLink( &(*winfile_local).handles, file_handle );
-		 HANDLE handle = holder?holder[0]:INVALID_HANDLE_VALUE;
+		HANDLE* holder = (HANDLE*)GetLink( &( *winfile_local ).handles, file_handle );
+		HANDLE handle = holder ? holder[0] : INVALID_HANDLE_VALUE;
 #ifdef _WIN32
 		DWORD dwLastWrittenResult;
-		LeaveCriticalSec( &(*winfile_local).cs_files );
-		return (WriteFile( handle, (POINTER)buffer, size, &dwLastWrittenResult, NULL )?dwLastWrittenResult:-1 );
+		LeaveCriticalSec( &( *winfile_local ).cs_files );
+		return ( WriteFile( handle, (POINTER)buffer, size, &dwLastWrittenResult, NULL ) ? dwLastWrittenResult : -1 );
 #else
 		return write( handle, buffer, size );
 #endif
 	}
 }
 //----------------------------------------------------------------------------
-int sack_unlinkEx( INDEX group, CTEXTSTR filename, struct file_system_mounted_interface *mount )
+int sack_unlinkEx( INDEX group, CTEXTSTR filename, struct file_system_mounted_interface* mount )
 {
 	int noMount = 0;
-	if( !mount )
-		mount = (*winfile_local).default_mount;
+	if( !mount ) {
+		if( !FileSysThreadInfo.mounted_file_systems )FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+		mount = FileSysThreadInfo.mounted_file_systems;
+	}
 	if( !mount )
 		noMount = 1;
-	while( mount || noMount )
-	{
+	while( mount || noMount ) {
 		int okay = 1;
-		if( mount->fsi )
-		{
-			if( mount->fsi->exists( mount->psvInstance, filename ) )
-			{
+		if( mount->fsi ) {
+			if( mount->fsi->exists( mount->psvInstance, filename ) ) {
 				mount->fsi->_unlink( mount->psvInstance, filename );
 				okay = 0;
 			}
 		}
-		else
-		{
+		else {
 			TEXTSTR tmp = PrependBasePath( group, NULL, filename );
 			okay = sack_filesys_unlink( 0, filename );
 			Deallocate( TEXTCHAR*, tmp );
@@ -64223,7 +64290,7 @@ int sack_unlinkEx( INDEX group, CTEXTSTR filename, struct file_system_mounted_in
 		if( !okay )
 			return !okay;
 		if( !noMount )
-			mount = mount->next;
+			mount = mount->nextLayer;
 		else
 			break;
 	}
@@ -64232,15 +64299,16 @@ int sack_unlinkEx( INDEX group, CTEXTSTR filename, struct file_system_mounted_in
 //----------------------------------------------------------------------------
 int sack_unlink( INDEX group, CTEXTSTR filename )
 {
-	return sack_unlinkEx( group, filename, (*winfile_local).mounted_file_systems );
+	if( !FileSysThreadInfo.mounted_file_systems )FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+	return sack_unlinkEx( group, filename, FileSysThreadInfo.mounted_file_systems );
 }
 //----------------------------------------------------------------------------
-int sack_mkdirEx( INDEX group, CTEXTSTR filename, struct file_system_mounted_interface *mount ) {
+int sack_mkdirEx( INDEX group, CTEXTSTR filename, struct file_system_mounted_interface* mount ) {
 	TEXTSTR tmp = PrependBasePath( group, NULL, filename );
 	while( mount ) {
 		int okay = 0;
 		if( !mount->writeable ) {
-			mount = mount->next; continue;
+			mount = mount->nextLayer; continue;
 		}
 		if( mount->fsi && mount->fsi->is_directory ) {
 			if( mount->fsi->is_directory( mount->psvInstance, tmp ) ) {
@@ -64280,13 +64348,14 @@ int sack_mkdirEx( INDEX group, CTEXTSTR filename, struct file_system_mounted_int
 			Deallocate( TEXTCHAR*, tmp );
 			return !okay;
 		}
-		mount = mount->next;
+		mount = mount->nextLayer;
 	}
 	Deallocate( TEXTCHAR*, tmp );
 	return 0;
 }
 int sack_mkdir( INDEX group, CTEXTSTR filename ) {
-	return sack_mkdirEx( group, filename, ( *winfile_local ).mounted_file_systems );
+	if( !FileSysThreadInfo.mounted_file_systems )FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+	return sack_mkdirEx( group, filename, FileSysThreadInfo.mounted_file_systems );
 }
 static int sack_filesys_mkdir( uintptr_t psv, CTEXTSTR filename )
 {
@@ -64298,7 +64367,7 @@ int sack_rmdirEx( INDEX group, CTEXTSTR filename, struct file_system_mounted_int
 	while( mount ) {
 		int okay = 1;
 		if( !mount->writeable ) {
-			mount = mount->next; continue;
+			mount = mount->nextLayer; continue;
 		}
 		{
 			struct directory* d;
@@ -64317,14 +64386,15 @@ int sack_rmdirEx( INDEX group, CTEXTSTR filename, struct file_system_mounted_int
 			Deallocate( TEXTCHAR*, tmp );
 			return okay;
 		}
-		mount = mount->next;
+		mount = mount->nextLayer;
 	}
 	Deallocate( TEXTCHAR*, tmp );
  // lie... we'll try to take care of that directory later, if they close the file in it.
 	return 1;
 }
 int sack_rmdir( INDEX group, CTEXTSTR filename ) {
-	return sack_rmdirEx( group, filename, ( *winfile_local ).mounted_file_systems );
+	if( !FileSysThreadInfo.mounted_file_systems )FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+	return sack_rmdirEx( group, filename, FileSysThreadInfo.mounted_file_systems );
 }
 static int sack_filesys_rmdir( uintptr_t psv, CTEXTSTR filename )
 {
@@ -64354,47 +64424,45 @@ static int sack_filesys_rmdir( uintptr_t psv, CTEXTSTR filename )
 #undef open
 #undef fopen
 //----------------------------------------------------------------------------
-FILE * sack_fopenEx( INDEX group, CTEXTSTR filename, CTEXTSTR opts, struct file_system_mounted_interface *mount )
+FILE* sack_fopenEx( INDEX group, CTEXTSTR filename, CTEXTSTR opts, struct file_system_mounted_interface* mount )
 {
-	FILE *handle = NULL;
-	struct file *file;
+	FILE* handle = NULL;
+	struct file* file;
 	INDEX allocedIndex = INVALID_INDEX;
 	LOGICAL memalloc = FALSE;
-	LOGICAL single_mount = (mount != NULL );
+	LOGICAL single_mount = ( mount != NULL );
 	LocalInit();
-	EnterCriticalSec( &(*winfile_local).cs_files );
-	if( !mount )
-		mount = (*winfile_local).mounted_file_systems;
+	EnterCriticalSec( &( *winfile_local ).cs_files );
+	if( !mount ) {
+		if( !FileSysThreadInfo.mounted_file_systems )FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+		mount = FileSysThreadInfo.mounted_file_systems;
+	}
 	if( !StrChr( opts, 'r' ) && !StrChr( opts, '+' ) )
-		while( mount )
   // skip roms...
-		{
+		while( mount ) {
 			//lprintf( "check mount %p %d", mount, mount->writeable );
 			if( mount->writeable )
 				break;
-			mount = mount->next;
+			mount = mount->nextLayer;
 		}
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
-		lprintf( "open %s %p(%s) %s (%d)", filename, mount, mount->name, opts, mount?mount->writeable:1 );
+	if( ( *winfile_local ).flags.bLogOpenClose )
+		lprintf( "open %s %p(%s) %s (%d)", filename, mount, mount->name, opts, mount ? mount->writeable : 1 );
 #endif
 	file = FindFileByName( group, filename, mount, &allocedIndex );
-	LeaveCriticalSec( &(*winfile_local).cs_files );
-	if( !file )
-	{
+	LeaveCriticalSec( &( *winfile_local ).cs_files );
+	if( !file ) {
 		TEXTSTR tmpname = NULL;
-		struct Group *filegroup = (struct Group *)GetLink( &(*winfile_local).groups, group );
+		struct Group* filegroup = ( struct Group* )GetLink( &( *winfile_local ).groups, group );
 		file = New( struct file );
 		file->deleted = file->delete_on_close = 0;
 		memalloc = TRUE;
 		DecodeFopenOpts( file, opts );
-		if( !StrChr( opts, 'n' ) && StrChr( filename, '%' ) )
-		{
+		if( !StrChr( opts, 'n' ) && StrChr( filename, '%' ) ) {
 			tmpname = ExpandPathVariable( filename );
 			filename = tmpname;
 		}
-		if( !StrChr( opts, 'n' ) && (filename[0] == '@') || (filename[0] == '*') || (filename[0] == '~') )
-		{
+		if( !StrChr( opts, 'n' ) && ( filename[0] == '@' ) || ( filename[0] == '*' ) || ( filename[0] == '~' ) ) {
 			tmpname = ExpandPathEx( filename, NULL );
 			filename = tmpname;
 		}
@@ -64402,29 +64470,25 @@ FILE * sack_fopenEx( INDEX group, CTEXTSTR filename, CTEXTSTR opts, struct file_
 		file->files = NULL;
 		file->name = StrDup( filename );
 		file->mount = mount;
-		if( ( !file->mount || !file->mount->fsi ) && !IsAbsolutePath( filename ) )
-		{
+		if( ( !file->mount || !file->mount->fsi ) && !IsAbsolutePath( filename ) ) {
 			tmpname = ExpandPath( filename );
 			file->fullname = PrependBasePath( group, filegroup, tmpname );
 			Deallocate( TEXTCHAR*, tmpname );
 		}
-		else
-		{
-			if( mount && group == 0 )
-			{
+		else {
+			if( mount && group == 0 ) {
 				file->fullname = StrDup( file->name );
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-				if( (*winfile_local).flags.bLogOpenClose )
+				if( ( *winfile_local ).flags.bLogOpenClose )
 					lprintf( "full is %s", file->fullname );
 #endif
 			}
-			else
-			{
+			else {
 				TEXTSTR tmp;
 				tmp = PrependBasePathEx( group, filegroup, file->name, !mount );
 				file->fullname = ExpandPath( tmp );
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-				if( (*winfile_local).flags.bLogOpenClose )
+				if( ( *winfile_local ).flags.bLogOpenClose )
 					lprintf( "full is %s %d", file->fullname, (int)group );
 #endif
 				Deallocate( TEXTSTR, tmp );
@@ -64432,67 +64496,59 @@ FILE * sack_fopenEx( INDEX group, CTEXTSTR filename, CTEXTSTR opts, struct file_
 			//file->fullname = file->name;
 		}
 		file->group = group;
-		if( (file->fullname[0] == '@') || (file->fullname[0] == '*') || (file->fullname[0] == '~') )
-		{
+		if( ( file->fullname[0] == '@' ) || ( file->fullname[0] == '*' ) || ( file->fullname[0] == '~' ) ) {
 			TEXTSTR tmpname = ExpandPathEx( file->fullname, NULL );
 			Deallocate( TEXTSTR, file->fullname );
 			file->fullname = tmpname;
 		}
-		if( !StrChr( opts, 'n' ) && StrChr( file->fullname, '%' ) )
-		{
+		if( !StrChr( opts, 'n' ) && StrChr( file->fullname, '%' ) ) {
 			if( allocedIndex != INVALID_INDEX )
 				SetLink( &file->files, allocedIndex, NULL );
-			if( memalloc )
-			{
-				DeleteLink( &(*winfile_local).files, file );
+			if( memalloc ) {
+				DeleteLink( &( *winfile_local ).files, file );
 				Deallocate( TEXTCHAR*, file->name );
 				Deallocate( TEXTCHAR*, file->fullname );
-				Deallocate( struct file *, file );
+				Deallocate( struct file*, file );
 			}
 			//DebugBreak();
 			return NULL;
 		}
-		EnterCriticalSec( &(*winfile_local).cs_files );
+		EnterCriticalSec( &( *winfile_local ).cs_files );
 		if( allocedIndex != INVALID_INDEX )
-			SetLink( &(*winfile_local).files,allocedIndex, file );
+			SetLink( &( *winfile_local ).files, allocedIndex, file );
 		else
-			AddLink( &(*winfile_local).files, file );
-		LeaveCriticalSec( &(*winfile_local).cs_files );
-	} else {
+			AddLink( &( *winfile_local ).files, file );
+		LeaveCriticalSec( &( *winfile_local ).cs_files );
+	}
+	else {
  // file is undeleted now.
 		file->deleted = 0;
 	}
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
+	if( ( *winfile_local ).flags.bLogOpenClose )
 		lprintf( "Open File: [%s]", file->fullname );
 #endif
-	if( mount && mount->fsi )
-	{
-		if( StrChr( opts, 'r' ) && !StrChr( opts, '+' ) || !StrChr( opts, 'w' ) )
-		{
-			struct file_system_mounted_interface *test_mount = mount;
-			while( !handle && test_mount )
-			{
-				if( test_mount->fsi )
-				{
+	if( mount && mount->fsi ) {
+		if( StrChr( opts, 'r' ) && !StrChr( opts, '+' ) || !StrChr( opts, 'w' ) ) {
+			struct file_system_mounted_interface* test_mount = mount;
+			while( !handle && test_mount ) {
+				if( test_mount->fsi ) {
 #if UNICODE
-					char *_fullname = CStrDup( file->fullname );
+					char* _fullname = CStrDup( file->fullname );
 #else
 #  define _fullname file->fullname
 #endif
 					file->mount = test_mount;
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-					if( (*winfile_local).flags.bLogOpenClose )
+					if( ( *winfile_local ).flags.bLogOpenClose )
 						lprintf( "Call mount %s to check if file exists %s", test_mount->name, file->fullname );
 #endif
-					if( test_mount->fsi->exists( test_mount->psvInstance, _fullname ) )
-					{
+					if( test_mount->fsi->exists( test_mount->psvInstance, _fullname ) ) {
 						handle = (FILE*)test_mount->fsi->open( test_mount->psvInstance, _fullname, opts );
 					}
-					else if( single_mount )
-					{
+					else if( single_mount ) {
 #if UNICODE
-						Deallocate( char *, _fullname );
+						Deallocate( char*, _fullname );
 #else
 #  undef _fullname
 #endif
@@ -64501,30 +64557,27 @@ FILE * sack_fopenEx( INDEX group, CTEXTSTR filename, CTEXTSTR opts, struct file_
 						return NULL;
 					}
 #if UNICODE
-					Deallocate( char *, _fullname );
+					Deallocate( char*, _fullname );
 #endif
 				}
 				else
 					goto default_fopen;
-				test_mount = test_mount->next;
+				test_mount = test_mount->nextLayer;
 			}
 		}
-		else
-		{
-			struct file_system_mounted_interface *test_mount = mount;
+		else {
+			struct file_system_mounted_interface* test_mount = mount;
 			//lprintf( "full is %s", file->fullname );
-			while( !handle && test_mount )
-			{
+			while( !handle && test_mount ) {
 				file->mount = test_mount;
-				if( test_mount->fsi && test_mount->writeable )
-				{
+				if( test_mount->fsi && test_mount->writeable ) {
 #ifdef UNICODE
 					char* _fullname = CStrDup( file->fullname );
 #else
 #  define _fullname file->fullname
 #endif
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-					if( (*winfile_local).flags.bLogOpenClose )
+					if( ( *winfile_local ).flags.bLogOpenClose )
 						lprintf( "Call mount %s to open file %s", test_mount->name, file->fullname );
 #endif
 					handle = (FILE*)test_mount->fsi->open( test_mount->psvInstance, _fullname, opts );
@@ -64536,18 +64589,17 @@ FILE * sack_fopenEx( INDEX group, CTEXTSTR filename, CTEXTSTR opts, struct file_
 				}
 				else
 					goto default_fopen;
-				test_mount = test_mount->next;
+				test_mount = test_mount->nextLayer;
 			}
 		}
 	}
-	if( !handle )
-	{
-default_fopen:
+	if( !handle ) {
+	default_fopen:
 		//file->mount = NULL;
 #ifdef __LINUX__
 #  ifdef UNICODE
-		char *tmpname = CStrDup( file->fullname );
-		char *tmpopts = CStrDup( opts );
+		char* tmpname = CStrDup( file->fullname );
+		char* tmpopts = CStrDup( opts );
 		handle = fopen( tmpname, tmpopts );
 		Deallocate( char*, tmpname );
 		Deallocate( char*, tmpopts );
@@ -64557,19 +64609,19 @@ default_fopen:
 #else
 #  ifdef _STRSAFE_H_INCLUDED_
 #    ifdef UNICODE
-		char *tmpname = CStrDup( file->fullname );
-		char *tmpopts = CStrDup( opts );
+		char* tmpname = CStrDup( file->fullname );
+		char* tmpopts = CStrDup( opts );
 		fopen_s( &handle, tmpname, tmpopts );
 		Deallocate( char*, tmpname );
 		Deallocate( char*, tmpopts );
 #    else
 		{
-			wchar_t *tmp = CharWConvert( file->fullname );
-			wchar_t *wopts = CharWConvert( opts );
+			wchar_t* tmp = CharWConvert( file->fullname );
+			wchar_t* wopts = CharWConvert( opts );
 			handle = _wfopen( tmp, wopts );
 			//_wfopen_s( &handle, tmp, wopts );
-			Deallocate( wchar_t *, tmp );
-			Deallocate( wchar_t *, wopts );
+			Deallocate( wchar_t*, tmp );
+			Deallocate( wchar_t*, wopts );
 		}
 #    endif
 #  else
@@ -64577,17 +64629,16 @@ default_fopen:
 #  endif
 #endif
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-		if( (*winfile_local).flags.bLogOpenClose )
+		if( ( *winfile_local ).flags.bLogOpenClose )
 			lprintf( "native opened %s", file->fullname );
 #endif
 	}
-	if( !handle )
-	{
+	if( !handle ) {
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-		if( (*winfile_local).flags.bLogOpenClose )
+		if( ( *winfile_local ).flags.bLogOpenClose )
 			lprintf( "Failed to open file [%s]=[%s]", file->name, file->fullname );
 #endif
-		DeleteLink( &(*winfile_local).files, file );
+		DeleteLink( &( *winfile_local ).files, file );
 		Deallocate( TEXTCHAR*, file->name );
 		Deallocate( TEXTCHAR*, file->fullname );
 		Deallocate( struct file*, file );
@@ -64595,58 +64646,57 @@ default_fopen:
 		return NULL;
 	}
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
+	if( ( *winfile_local ).flags.bLogOpenClose )
 		lprintf( "sack_open %s (%s)", file->fullname, opts );
 #endif
 	AddLink( &file->files, handle );
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
+	if( ( *winfile_local ).flags.bLogOpenClose )
 		lprintf( "Added FILE* %p and list is %p", handle, file->files );
 #endif
 	return handle;
 }
 //----------------------------------------------------------------------------
-FILE*  sack_fopen ( INDEX group, CTEXTSTR filename, CTEXTSTR opts )
+FILE* sack_fopen( INDEX group, CTEXTSTR filename, CTEXTSTR opts )
 {
 	return sack_fopenEx( group, filename, opts, NULL );
 }
 //----------------------------------------------------------------------------
-FILE*  sack_fsopenEx( INDEX group
-					 , CTEXTSTR filename
-					 , CTEXTSTR opts
-					 , int share_mode
-					 , struct file_system_mounted_interface *mount )
+FILE* sack_fsopenEx( INDEX group
+	, CTEXTSTR filename
+	, CTEXTSTR opts
+	, int share_mode
+	, struct file_system_mounted_interface* mount )
 {
-	FILE *handle = NULL;
-	struct file *file;
+	FILE* handle = NULL;
+	struct file* file;
 	INDEX idx;
 	LOGICAL single_mount = ( mount != NULL );
 	LocalInit();
-	EnterCriticalSec( &(*winfile_local).cs_files );
-	if( !mount )
-		mount = (*winfile_local).mounted_file_systems;
+	EnterCriticalSec( &( *winfile_local ).cs_files );
+	if( !mount ) {
+		if( !FileSysThreadInfo.mounted_file_systems )FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+		mount = FileSysThreadInfo.mounted_file_systems;
+	}
 	if( !StrChr( opts, 'r' ) && !StrChr( opts, '+' ) )
-		while( mount )
   // skip roms...
-		{
+		while( mount ) {
 			//lprintf( "check mount %p %d", mount, mount->writeable );
 			if( mount->writeable )
 				break;
-			mount = mount->next;
+			mount = mount->nextLayer;
 		}
-	LIST_FORALL( (*winfile_local).files, idx, struct file *, file )
+	LIST_FORALL( ( *winfile_local ).files, idx, struct file*, file )
 	{
 		if( ( file->group == group )
 			&& ( StrCmp( file->name, filename ) == 0 )
-			&& ( file->mount == mount ) )
-		{
+			&& ( file->mount == mount ) ) {
 			break;
 		}
 	}
-	LeaveCriticalSec( &(*winfile_local).cs_files );
-	if( !file )
-	{
-		struct Group *filegroup = (struct Group *)GetLink( &(*winfile_local).groups, group );
+	LeaveCriticalSec( &( *winfile_local ).cs_files );
+	if( !file ) {
+		struct Group* filegroup = ( struct Group* )GetLink( &( *winfile_local ).groups, group );
 		file = New( struct file );
 		DecodeFopenOpts( file, opts );
 		file->deleted = file->delete_on_close = 0;
@@ -64659,59 +64709,51 @@ FILE*  sack_fsopenEx( INDEX group
 			file->fullname = PrependBasePath( group, filegroup, filename );
 		else
 			file->fullname = StrDup( filename );
-		EnterCriticalSec( &(*winfile_local).cs_files );
-		AddLink( &(*winfile_local).files,file );
-		LeaveCriticalSec( &(*winfile_local).cs_files );
+		EnterCriticalSec( &( *winfile_local ).cs_files );
+		AddLink( &( *winfile_local ).files, file );
+		LeaveCriticalSec( &( *winfile_local ).cs_files );
 	}
-	if( mount && mount->fsi )
-	{
-		if( StrChr( opts, 'r' ) && !StrChr( opts, '+' ) || !StrChr( opts, 'w' ) )
-		{
-			struct file_system_mounted_interface *test_mount = mount;
-			while( !handle && test_mount && test_mount->fsi )
-			{
+	if( mount && mount->fsi ) {
+		if( StrChr( opts, 'r' ) && !StrChr( opts, '+' ) || !StrChr( opts, 'w' ) ) {
+			struct file_system_mounted_interface* test_mount = mount;
+			while( !handle && test_mount && test_mount->fsi ) {
 #ifdef UNICODE
-				char *_fullname = CStrDup( file->fullname );
+				char* _fullname = CStrDup( file->fullname );
 #else
 #  define _fullname file->fullname
 #endif
 				file->mount = test_mount;
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-				if( (*winfile_local).flags.bLogOpenClose )
+				if( ( *winfile_local ).flags.bLogOpenClose )
 					lprintf( "Call mount %s to check if file exists %s", test_mount->name, file->fullname );
 #endif
-				if( test_mount->fsi->exists( test_mount->psvInstance, _fullname ) )
-				{
+				if( test_mount->fsi->exists( test_mount->psvInstance, _fullname ) ) {
 					handle = (FILE*)test_mount->fsi->open( test_mount->psvInstance, _fullname, opts );
 				}
 #ifdef UNICODE
-				Deallocate( char *, _fullname );
+				Deallocate( char*, _fullname );
 #else
 #  undef _fullname
 #endif
-				if( !handle && single_mount )
-				{
+				if( !handle && single_mount ) {
 					return NULL;
 				}
-				test_mount = test_mount->next;
+				test_mount = test_mount->nextLayer;
 			}
 		}
-		else
-		{
-			struct file_system_mounted_interface *test_mount = mount;
+		else {
+			struct file_system_mounted_interface* test_mount = mount;
 			//lprintf( "full is %s", file->fullname );
-			while( !handle && test_mount )
-			{
+			while( !handle && test_mount ) {
 				file->mount = test_mount;
-				if( test_mount->fsi && test_mount->writeable )
-				{
+				if( test_mount->fsi && test_mount->writeable ) {
 #ifdef UNICODE
 					char* _fullname = CStrDup( file->fullname );
 #else
 #  define _fullname file->fullname
 #endif
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-					if( (*winfile_local).flags.bLogOpenClose )
+					if( ( *winfile_local ).flags.bLogOpenClose )
 						lprintf( "Call mount %s to open file %s", test_mount->name, file->fullname );
 #endif
 					handle = (FILE*)test_mount->fsi->open( test_mount->psvInstance, _fullname, opts );
@@ -64723,18 +64765,17 @@ FILE*  sack_fsopenEx( INDEX group
 				}
 				else
 					goto default_fopen;
-				test_mount = test_mount->next;
+				test_mount = test_mount->nextLayer;
 			}
 		}
-			//file->fsi = mount?mount->fsi:NULL;
+		//file->fsi = mount?mount->fsi:NULL;
 	}
-	if( !handle )
-	{
-default_fopen:
+	if( !handle ) {
+	default_fopen:
 #ifdef __LINUX__
 #  ifdef UNICODE
-		char *tmpname = CStrDup( file->fullname );
-		char *tmpopts = CStrDup( opts );
+		char* tmpname = CStrDup( file->fullname );
+		char* tmpopts = CStrDup( opts );
 		handle = fopen( tmpname, tmpopts );
 		Deallocate( char*, tmpname );
 		Deallocate( char*, tmpopts );
@@ -64743,43 +64784,42 @@ default_fopen:
 #  endif
 #else
 		{
-			wchar_t *tmp = CharWConvert( file->fullname );
-			wchar_t *wopts = CharWConvert( opts );
+			wchar_t* tmp = CharWConvert( file->fullname );
+			wchar_t* wopts = CharWConvert( opts );
 			handle = _wfsopen( tmp, wopts, share_mode );
-			Deallocate( wchar_t *, tmp );
-			Deallocate( wchar_t *, wopts );
+			Deallocate( wchar_t*, tmp );
+			Deallocate( wchar_t*, wopts );
 		}
 #endif
 	}
-	if( !handle )
-	{
+	if( !handle ) {
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-		if( (*winfile_local).flags.bLogOpenClose )
+		if( ( *winfile_local ).flags.bLogOpenClose )
 			lprintf( "Failed to open file [%s]=[%s]", file->name, file->fullname );
 #endif
 		return NULL;
 	}
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
+	if( ( *winfile_local ).flags.bLogOpenClose )
 		lprintf( "sack_open %s (%s)", file->fullname, opts );
 #endif
-	EnterCriticalSec( &(*winfile_local).cs_files );
+	EnterCriticalSec( &( *winfile_local ).cs_files );
 	AddLink( &file->files, handle );
-	LeaveCriticalSec( &(*winfile_local).cs_files );
+	LeaveCriticalSec( &( *winfile_local ).cs_files );
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	if( (*winfile_local).flags.bLogOpenClose )
+	if( ( *winfile_local ).flags.bLogOpenClose )
 		lprintf( "Added FILE* %p and list is %p", handle, file->files );
 #endif
 	return handle;
 }
 //----------------------------------------------------------------------------
-FILE*  sack_fsopen( INDEX group, CTEXTSTR filename, CTEXTSTR opts, int share_mode )
+FILE* sack_fsopen( INDEX group, CTEXTSTR filename, CTEXTSTR opts, int share_mode )
 {
-/*(*winfile_local).mounted_file_systems*/
+/*FileSysThreadInfo.mounted_file_systems*/
 	return sack_fsopenEx( group, filename, opts, share_mode, NULL );
 }
 //----------------------------------------------------------------------------
-static size_t sack_fsizeEx ( FILE *file_file, struct file_system_mounted_interface *mount )
+static size_t sack_fsizeEx( FILE* file_file, struct file_system_mounted_interface* mount )
 {
 	if( mount && mount->fsi )
 		return mount->fsi->size( file_file );
@@ -64792,28 +64832,27 @@ static size_t sack_fsizeEx ( FILE *file_file, struct file_system_mounted_interfa
 		return length;
 	}
 }
-size_t sack_fsize ( FILE *file_file ) {
-	struct file *file;
+size_t sack_fsize( FILE* file_file ) {
+	struct file* file;
 	file = FindFileByFILE( file_file );
-	return sack_fsizeEx( file_file, file?file->mount:NULL );
+	return sack_fsizeEx( file_file, file ? file->mount : NULL );
 }
-static size_t sack_ftellEx ( FILE *file_file, struct file_system_mounted_interface *mount )
+static size_t sack_ftellEx( FILE* file_file, struct file_system_mounted_interface* mount )
 {
 	if( mount && mount->fsi )
 		return mount->fsi->tell( file_file );
 	return ftell( file_file );
 }
-size_t sack_ftell ( FILE *file_file ) {
-	struct file *file;
+size_t sack_ftell( FILE* file_file ) {
+	struct file* file;
 	file = FindFileByFILE( file_file );
 	if( file && file->mount && file->mount->fsi )
-		return sack_ftellEx(  file_file, file->mount );
+		return sack_ftellEx( file_file, file->mount );
 	return sack_ftellEx( file_file, NULL );
 }
-size_t  sack_fseekEx ( FILE *file_file, size_t pos, int whence, struct file_system_mounted_interface *mount )
+size_t  sack_fseekEx( FILE* file_file, size_t pos, int whence, struct file_system_mounted_interface* mount )
 {
-	if( mount && mount->fsi )
-	{
+	if( mount && mount->fsi ) {
 		return mount->fsi->seek( file_file, pos, whence );
 	}
 	if( fseek( file_file, (long)pos, whence ) )
@@ -64821,17 +64860,16 @@ size_t  sack_fseekEx ( FILE *file_file, size_t pos, int whence, struct file_syst
 	//struct file *file = FindFileByFILE( file_file );
 	return ftell( file_file );
 }
-size_t  sack_fseek ( FILE *file_file, size_t pos, int whence ){
-	struct file *file;
+size_t  sack_fseek( FILE* file_file, size_t pos, int whence ) {
+	struct file* file;
 	file = FindFileByFILE( file_file );
 	if( file && file->mount && file->mount->fsi )
 		return sack_fseekEx( file_file, pos, whence, file->mount );
 	return sack_fseekEx( file_file, pos, whence, NULL );
 }
-static int  sack_fflushEx ( FILE *file_file, struct file_system_mounted_interface *mount )
+static int  sack_fflushEx( FILE* file_file, struct file_system_mounted_interface* mount )
 {
-	if( mount && mount->fsi )
-	{
+	if( mount && mount->fsi ) {
 		return mount->fsi->flush( file_file );
 		//DeleteLink( &file->files, file_file );
 		//file->fsi->close( file_file );
@@ -64841,28 +64879,26 @@ static int  sack_fflushEx ( FILE *file_file, struct file_system_mounted_interfac
 	}
 	return fflush( file_file );
 }
-int  sack_fflush ( FILE *file_file )
+int  sack_fflush( FILE* file_file )
 {
-	struct file *file;
+	struct file* file;
 	file = FindFileByFILE( file_file );
-	if( file && file->mount && file->mount->fsi )
-	{
+	if( file && file->mount && file->mount->fsi ) {
 		return sack_fflushEx( file_file, file->mount );
 	}
 	return fflush( file_file );
 }
 //----------------------------------------------------------------------------
-int  sack_fclose ( FILE *file_file )
+int  sack_fclose( FILE* file_file )
 {
-	struct file *file;
+	struct file* file;
 	if( !file_file ) return -1;
-	EnterCriticalSec( &(*winfile_local).cs_files );
+	EnterCriticalSec( &( *winfile_local ).cs_files );
 	file = FindFileByFILE( file_file );
-	if( file )
-	{
+	if( file ) {
 		int status;
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-		if( (*winfile_local).flags.bLogOpenClose )
+		if( ( *winfile_local ).flags.bLogOpenClose )
 			lprintf( "Closing %s", file->fullname );
 #endif
 		if( file->mount && file->mount->fsi )
@@ -64878,53 +64914,51 @@ int  sack_fclose ( FILE *file_file )
 			}
 		}
 #if !defined( __FILESYS_NO_FILE_LOGGING__ )
-		if( (*winfile_local).flags.bLogOpenClose )
+		if( ( *winfile_local ).flags.bLogOpenClose )
 			lprintf( "deleted FILE* %p and list is %p", file_file, file->files );
 #endif
 		DeleteLink( &file->files, file_file );
 		if( !GetLinkCount( file->files ) ) {
-			DeleteLink( &(*winfile_local).files, file );
-			LeaveCriticalSec( &(*winfile_local).cs_files );
+			DeleteLink( &( *winfile_local ).files, file );
+			LeaveCriticalSec( &( *winfile_local ).cs_files );
 			DeleteListEx( &file->files DBG_SRC );
 			Deallocate( TEXTCHAR*, file->name );
 			Deallocate( TEXTCHAR*, file->fullname );
 			Deallocate( struct file*, file );
 		}
 		else
-			LeaveCriticalSec( &(*winfile_local).cs_files );
+			LeaveCriticalSec( &( *winfile_local ).cs_files );
 		return status;
 	}
-	LeaveCriticalSec( &(*winfile_local).cs_files );
+	LeaveCriticalSec( &( *winfile_local ).cs_files );
 	return fclose( file_file );
 }
 //----------------------------------------------------------------------------
-static void transcodeOutputText( struct file *file, POINTER buffer, size_t size, POINTER *outbuf, size_t *outsize ) {
+static void transcodeOutputText( struct file* file, POINTER buffer, size_t size, POINTER* outbuf, size_t* outsize ) {
 }
 //----------------------------------------------------------------------------
-static void transcodeInputText( struct file *file, POINTER buffer, size_t size, POINTER *outbuf, size_t *outsize ) {
+static void transcodeInputText( struct file* file, POINTER buffer, size_t size, POINTER* outbuf, size_t* outsize ) {
 }
 //----------------------------------------------------------------------------
-size_t  sack_fread ( POINTER buffer, size_t size, int count,FILE *file_file )
+size_t  sack_fread( POINTER buffer, size_t size, int count, FILE* file_file )
 {
-	struct file *file;
+	struct file* file;
 	file = FindFileByFILE( file_file );
 	if( file && file->mount && file->mount->fsi )
 		return file->mount->fsi->_read( file_file, (char*)buffer, size * count );
 	return fread( buffer, size, count, file_file );
 }
 //----------------------------------------------------------------------------
-size_t  sack_fwrite ( CPOINTER buffer, size_t size, int count,FILE *file_file )
+size_t  sack_fwrite( CPOINTER buffer, size_t size, int count, FILE* file_file )
 {
-	struct file *file;
+	struct file* file;
 	file = FindFileByFILE( file_file );
-	if( file && file->mount && file->mount->fsi )
-	{
+	if( file && file->mount && file->mount->fsi ) {
 		size_t result;
-		if( file->mount->fsi->copy_write_buffer && file->mount->fsi->copy_write_buffer() )
-		{
-			POINTER dupbuf = malloc( size*count + 3 );
+		if( file->mount->fsi->copy_write_buffer && file->mount->fsi->copy_write_buffer() ) {
+			POINTER dupbuf = malloc( size * count + 3 );
 #pragma warning( disable: 6387 )
-			memcpy( dupbuf, buffer, size*count );
+			memcpy( dupbuf, buffer, size * count );
 			result = file->mount->fsi->_write( file_file, (const char*)dupbuf, size * count );
 			free( dupbuf );
 		}
@@ -64935,7 +64969,7 @@ size_t  sack_fwrite ( CPOINTER buffer, size_t size, int count,FILE *file_file )
 	return fwrite( (POINTER)buffer, size, count, file_file );
 }
 //----------------------------------------------------------------------------
-TEXTSTR sack_fgets ( TEXTSTR buffer, size_t size,FILE *file_file )
+TEXTSTR sack_fgets( TEXTSTR buffer, size_t size, FILE* file_file )
 {
 #ifdef _UNICODE
 	//char *tmpbuf = NewArray( char, size+1);
@@ -64945,27 +64979,22 @@ TEXTSTR sack_fgets ( TEXTSTR buffer, size_t size,FILE *file_file )
 	//StrCpyEx( buffer, tmp_wbuf, size );
 	return buffer;
 #else
-	struct file *file;
+	struct file* file;
 	file = FindFileByFILE( file_file );
-	if( file && file->mount && file->mount->fsi )
-	{
+	if( file && file->mount && file->mount->fsi ) {
 		size_t n;
-		char *output = buffer;
-		size = size-1;
+		char* output = buffer;
+		size = size - 1;
 		buffer[size] = 0;
-		for( n = 0; n < size; n++ )
-		{
-			if( file->mount->fsi->_read( file_file, output, 1 ) )
-			{
-				if( output[0] == '\n' )
-				{
+		for( n = 0; n < size; n++ ) {
+			if( file->mount->fsi->_read( file_file, output, 1 ) ) {
+				if( output[0] == '\n' ) {
 					output[1] = 0;
 					return buffer;
 				}
 				output++;
 			}
-			else
-			{
+			else {
 				output[0] = 0;
 				return NULL;
 			}
@@ -64978,25 +65007,24 @@ TEXTSTR sack_fgets ( TEXTSTR buffer, size_t size,FILE *file_file )
 #endif
 }
 //----------------------------------------------------------------------------
-LOGICAL sack_existsEx ( const char *filename, struct file_system_mounted_interface *mount )
+LOGICAL sack_existsEx( const char* filename, struct file_system_mounted_interface* mount )
 {
-	FILE *tmp;
-	if( mount && mount->fsi && mount->fsi->exists )
-	{
+	FILE* tmp;
+	if( mount && mount->fsi && mount->fsi->exists ) {
 		int result = mount->fsi->exists( mount->psvInstance, filename );
 		return result;
 	}
 	else {
 		{
-			struct file *file = FindFileByName( 0, filename, mount, NULL );
+			struct file* file = FindFileByName( 0, filename, mount, NULL );
 			if( file )
 				if( file->deleted ) return FALSE;
 		}
 #ifdef WIN32
-		wchar_t *wfilename = CharWConvert( filename );
-		if( (tmp = _wfopen( wfilename, L"rb" )) ) {
+		wchar_t* wfilename = CharWConvert( filename );
+		if( ( tmp = _wfopen( wfilename, L"rb" ) ) ) {
 #else
-		if( (tmp = fopen( filename, "rb" )) ) {
+		if( ( tmp = fopen( filename, "rb" ) ) ) {
 #endif
 			fclose( tmp );
 #ifdef WIN32
@@ -65007,30 +65035,28 @@ LOGICAL sack_existsEx ( const char *filename, struct file_system_mounted_interfa
 #ifdef WIN32
 		Deallocate( wchar_t*, wfilename );
 #endif
-	}
+		}
 	return FALSE;
-}
+	}
 //----------------------------------------------------------------------------
-LOGICAL sack_exists( const char * filename )
+LOGICAL sack_exists( const char* filename )
 {
-	struct file_system_mounted_interface *mount = (*winfile_local).mounted_file_systems;
-	while( mount )
-	{
-		if( sack_existsEx( filename, mount ) )
-		{
-			(*winfile_local).last_find_mount = mount;
+	if( !FileSysThreadInfo.mounted_file_systems )FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+	struct file_system_mounted_interface* mount = FileSysThreadInfo.mounted_file_systems;
+	while( mount ) {
+		if( sack_existsEx( filename, mount ) ) {
+			( *winfile_local ).last_find_mount = mount;
 			return TRUE;
 		}
-		mount = mount->next;
+		mount = mount->nextLayer;
 	}
 	return FALSE;
 }
 //----------------------------------------------------------------------------
-LOGICAL sack_isPathEx ( const char *filename, struct file_system_mounted_interface *mount )
+LOGICAL sack_isPathEx( const char* filename, struct file_system_mounted_interface* mount )
 {
-	FILE *tmp;
-	if( mount && mount->fsi && mount->fsi->exists )
-	{
+	FILE* tmp;
+	if( mount && mount->fsi && mount->fsi->exists ) {
 		{
 			struct directory* d;
 			INDEX i;
@@ -65044,38 +65070,34 @@ LOGICAL sack_isPathEx ( const char *filename, struct file_system_mounted_interfa
 		int result = mount->fsi->is_directory( mount->psvInstance, filename );
 		return result;
 	}
-	else if( ( tmp = fopen( filename, "rb" ) ) )
-	{
+	else if( ( tmp = fopen( filename, "rb" ) ) ) {
 		fclose( tmp );
 		return TRUE;
 	}
 	return FALSE;
 }
 //----------------------------------------------------------------------------
-LOGICAL sack_isPath( const char * filename )
+LOGICAL sack_isPath( const char* filename )
 {
-	struct file_system_mounted_interface *mount = (*winfile_local).mounted_file_systems;
-	while( mount )
-	{
-		if( sack_isPathEx( filename, mount ) )
-		{
-			(*winfile_local).last_find_mount = mount;
+	if( !FileSysThreadInfo.mounted_file_systems )FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+	struct file_system_mounted_interface* mount = FileSysThreadInfo.mounted_file_systems;
+	while( mount ) {
+		if( sack_isPathEx( filename, mount ) ) {
+			( *winfile_local ).last_find_mount = mount;
 			return TRUE;
 		}
-		mount = mount->next;
+		mount = mount->nextLayer;
 	}
 	return FALSE;
 }
 //----------------------------------------------------------------------------
-int  sack_renameEx ( CTEXTSTR file_source, CTEXTSTR new_name, struct file_system_mounted_interface *mount )
+int  sack_renameEx( CTEXTSTR file_source, CTEXTSTR new_name, struct file_system_mounted_interface* mount )
 {
 	int status;
-	if( mount && mount->fsi )
-	{
+	if( mount && mount->fsi ) {
 		return mount->fsi->rename( mount->psvInstance, file_source, new_name );
 	}
-	else
-	{
+	else {
 		TEXTSTR tmp_src = ExpandPath( file_source );
 		TEXTSTR tmp_dst = ExpandPath( new_name );
 #ifdef WIN32
@@ -65083,8 +65105,8 @@ int  sack_renameEx ( CTEXTSTR file_source, CTEXTSTR new_name, struct file_system
 #else
 #  ifdef UNICODE
 		{
-			char *tmpnames = CStrDup( tmp_src );
-			char *tmpnamed = CStrDup( tmp_dst );
+			char* tmpnames = CStrDup( tmp_src );
+			char* tmpnamed = CStrDup( tmp_dst );
 			status = rename( tmpnames, tmpnamed );
 			Deallocate( char*, tmpnames );
 			Deallocate( char*, tmpnamed );
@@ -65101,28 +65123,28 @@ int  sack_renameEx ( CTEXTSTR file_source, CTEXTSTR new_name, struct file_system
 //----------------------------------------------------------------------------
 int  sack_rename( CTEXTSTR file_source, CTEXTSTR new_name )
 {
-	return sack_renameEx( file_source, new_name, (*winfile_local).default_mount );
+	if( !FileSysThreadInfo.mounted_file_systems )FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+	return sack_renameEx( file_source, new_name, FileSysThreadInfo.mounted_file_systems );
 }
 //----------------------------------------------------------------------------
-size_t GetSizeofFile( TEXTCHAR *name, uint32_t* unused )
+size_t GetSizeofFile( TEXTCHAR * name, uint32_t * unused )
 {
 	size_t size;
 #ifdef __LINUX__
 #  ifdef UNICODE
-	char *tmpname = CStrDup( name );
+	char* tmpname = CStrDup( name );
 		  // open MYFILE.TXT
 	int hFile = open( tmpname,
 			 // open for reading
-						  O_RDONLY );
+		O_RDONLY );
 	Deallocate( char*, tmpname );
 #  else
 		  // open MYFILE.TXT
 	int hFile = open( name,
 			 // open for reading
-						  O_RDONLY );
+		O_RDONLY );
 #  endif
-	if( hFile >= 0 )
-	{
+	if( hFile >= 0 ) {
 		size = lseek( hFile, 0, SEEK_END );
 		close( hFile );
 		return size;
@@ -65131,11 +65153,10 @@ size_t GetSizeofFile( TEXTCHAR *name, uint32_t* unused )
 		return 0;
 #else
 	HANDLE hFile = CreateFile( name, 0, 0, NULL, OPEN_EXISTING, 0, NULL );
-	if( hFile != INVALID_HANDLE_VALUE )
-	{
+	if( hFile != INVALID_HANDLE_VALUE ) {
 		size = GetFileSize( hFile, (DWORD*)unused );
-		if( sizeof( size ) > 4  && unused )
-			size |= (uint64_t)(*unused) << 32;
+		if( sizeof( size ) > 4 && unused )
+			size |= (uint64_t)( *unused ) << 32;
 		CloseHandle( hFile );
 		return size;
 	}
@@ -65145,26 +65166,25 @@ size_t GetSizeofFile( TEXTCHAR *name, uint32_t* unused )
 }
 //-------------------------------------------------------------------------
 uint32_t GetFileTimeAndSize( CTEXTSTR name
-							, LPFILETIME lpCreationTime
-							,  LPFILETIME lpLastAccessTime
-							,  LPFILETIME lpLastWriteTime
-							, int *IsDirectory
-							)
+	, LPFILETIME lpCreationTime
+	, LPFILETIME lpLastAccessTime
+	, LPFILETIME lpLastWriteTime
+	, int* IsDirectory
+)
 {
 	uint32_t size;
 #ifdef __LINUX__
 		  // open MYFILE.TXT
 	int hFile = open( name,
 			 // open for reading
-						  O_RDONLY );
-	if( hFile >= 0 )
-	{
+		O_RDONLY );
+	if( hFile >= 0 ) {
 		struct stat statbuf;
 		fstat( hFile, &statbuf );
 		if( lpCreationTime )
 			lpCreationTime[0] = statbuf.st_ctime;
 		if( lpLastAccessTime )
-			lpLastAccessTime[0] =  statbuf.st_atime;
+			lpLastAccessTime[0] = statbuf.st_atime;
 		if( lpLastWriteTime )
 			lpLastWriteTime[0] = statbuf.st_mtime;
 		//convert( &realtime, (time_t*)&statbuf.st_mtime );
@@ -65177,17 +65197,15 @@ uint32_t GetFileTimeAndSize( CTEXTSTR name
 #else
 	HANDLE hFile = CreateFile( name, 0, 0, NULL, OPEN_EXISTING, 0, NULL );
 	uint32_t extra_size;
-	if( hFile != INVALID_HANDLE_VALUE )
-	{
+	if( hFile != INVALID_HANDLE_VALUE ) {
 		size = GetFileSize( hFile, (DWORD*)&extra_size );
 		GetFileTime( hFile, lpCreationTime, lpLastAccessTime, lpLastWriteTime );
-		if( IsDirectory )
-		{
+		if( IsDirectory ) {
 			uint32_t dwAttr = GetFileAttributes( name );
 			if( dwAttr & FILE_ATTRIBUTE_DIRECTORY )
-				(*IsDirectory) = 1;
+				( *IsDirectory ) = 1;
 			else
-				(*IsDirectory) = 0;
+				( *IsDirectory ) = 0;
 		}
 		CloseHandle( hFile );
 		return size;
@@ -65196,28 +65214,28 @@ uint32_t GetFileTimeAndSize( CTEXTSTR name
 		return (uint32_t)-1;
 #endif
 }
-struct file_system_interface *sack_get_filesystem_interface( CTEXTSTR name )
+struct file_system_interface* sack_get_filesystem_interface( CTEXTSTR name )
 {
-	struct file_interface_tracker *fit;
+	struct file_interface_tracker* fit;
 	INDEX idx;
-	LIST_FORALL( (*winfile_local).file_system_interface, idx, struct file_interface_tracker *, fit )
+	LIST_FORALL( ( *winfile_local ).file_system_interface, idx, struct file_interface_tracker*, fit )
 	{
 		if( StrCaseCmp( fit->name, name ) == 0 )
 			return fit->fsi;
 	}
 	return NULL;
 }
-void sack_set_default_filesystem_interface( struct file_system_interface *fsi )
+void sack_set_default_filesystem_interface( struct file_system_interface* fsi )
 {
-	(*winfile_local).default_file_system_interface = fsi;
+	( *winfile_local ).default_file_system_interface = fsi;
 }
-void sack_register_filesystem_interface( CTEXTSTR name, struct file_system_interface *fsi )
+void sack_register_filesystem_interface( CTEXTSTR name, struct file_system_interface* fsi )
 {
-	struct file_interface_tracker *fit = New( struct file_interface_tracker );
+	struct file_interface_tracker* fit = New( struct file_interface_tracker );
 	fit->name = StrDup( name );
 	fit->fsi = fsi;
 	LocalInit();
-	AddLink( &(*winfile_local).file_system_interface, fit );
+	AddLink( &( *winfile_local ).file_system_interface, fit );
 }
 #ifdef WIN32
 typedef NTSTATUS( NTAPI* sNtSetInformationFile )
@@ -65295,85 +65313,87 @@ typedef struct _FILE_BASIC_INFORMATION {
 typedef struct _FILE_DISPOSITION_INFORMATION {
 	BOOLEAN DeleteFile;
 } FILE_DISPOSITION_INFORMATION, * PFILE_DISPOSITION_INFORMATION;
-LOGICAL windowDeepDelete( const char *path )
+LOGICAL windowDeepDelete( const char* path )
 {
-  WCHAR* pathw = CharWConvert( path );
-  HANDLE handle;
-  BY_HANDLE_FILE_INFORMATION info;
-  FILE_DISPOSITION_INFORMATION disposition;
-  IO_STATUS_BLOCK iosb;
-  NTSTATUS status;
-  handle = CreateFileW(pathw,
-                       FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES | DELETE,
-                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                       NULL,
-                       OPEN_EXISTING,
-                       FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
-                       NULL);
-  Deallocate( WCHAR*	, pathw );
-  if (handle == INVALID_HANDLE_VALUE) {
-    //SET_REQ_WIN32_ERROR(req, GetLastError());
-    return FALSE;
-  }
-  if (!GetFileInformationByHandle(handle, &info)) {
-    //SET_REQ_WIN32_ERROR(req, GetLastError());
-    CloseHandle(handle);
-    return FALSE;
-  }
-  if (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-    /* Do not allow deletion of directories, unless it is a symlink. When the
-     * path refers to a non-symlink directory, report EPERM as mandated by
-     * POSIX.1. */
-    /* Check if it is a reparse point. If it's not, it's a normal directory. */
-    if (!(info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
-      CloseHandle(handle);
-      return FALSE;
-    }
-    /* Read the reparse point and check if it is a valid symlink. If not, don't
-     * unlink. */
-	/*
-    if (fs__readlink_handle(handle, NULL, NULL) < 0) {
-      DWORD error = GetLastError();
-      if (error == ERROR_SYMLINK_NOT_SUPPORTED)
-        error = ERROR_ACCESS_DENIED;
-      CloseHandle(handle);
-      return FALSE;
-    }
-  */
-  }
-  if (info.dwFileAttributes & FILE_ATTRIBUTE_READONLY) {
-    /* Remove read-only attribute */
-    FILE_BASIC_INFORMATION basic = { 0 };
-    basic.FileAttributes = (info.dwFileAttributes & ~FILE_ATTRIBUTE_READONLY) |
-                           FILE_ATTRIBUTE_ARCHIVE;
-    status = pNtSetInformationFile(handle,
-                                   &iosb,
-                                   &basic,
-                                   sizeof basic,
-                                   (FILE_INFORMATION_CLASS)FileBasicInformation);
-    if (!NT_SUCCESS(status)) {
-      CloseHandle(handle);
-      return FALSE;
-    }
-  }
-  /* Try to set the delete flag. */
-  disposition.DeleteFile = TRUE;
-  status = pNtSetInformationFile(handle,
-                                 &iosb,
-                                 &disposition,
-                                 sizeof disposition,
-                                 (FILE_INFORMATION_CLASS)FileDispositionInformation);
-  if (NT_SUCCESS(status)) {
-  } else {
-    return FALSE;
-  }
-  CloseHandle(handle);
-  return TRUE;
+	WCHAR* pathw = CharWConvert( path );
+	HANDLE handle;
+	BY_HANDLE_FILE_INFORMATION info;
+	FILE_DISPOSITION_INFORMATION disposition;
+	IO_STATUS_BLOCK iosb;
+	NTSTATUS status;
+	handle = CreateFileW( pathw,
+		FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES | DELETE,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		NULL,
+		OPEN_EXISTING,
+		FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
+		NULL );
+	Deallocate( WCHAR*, pathw );
+	if( handle == INVALID_HANDLE_VALUE ) {
+		//SET_REQ_WIN32_ERROR(req, GetLastError());
+		return FALSE;
+	}
+	if( !GetFileInformationByHandle( handle, &info ) ) {
+		//SET_REQ_WIN32_ERROR(req, GetLastError());
+		CloseHandle( handle );
+		return FALSE;
+	}
+	if( info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
+		/* Do not allow deletion of directories, unless it is a symlink. When the
+		 * path refers to a non-symlink directory, report EPERM as mandated by
+		 * POSIX.1. */
+		 /* Check if it is a reparse point. If it's not, it's a normal directory. */
+		if( !( info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT ) ) {
+			CloseHandle( handle );
+			return FALSE;
+		}
+		/* Read the reparse point and check if it is a valid symlink. If not, don't
+		 * unlink. */
+		 /*
+		 if (fs__readlink_handle(handle, NULL, NULL) < 0) {
+		   DWORD error = GetLastError();
+		   if (error == ERROR_SYMLINK_NOT_SUPPORTED)
+			 error = ERROR_ACCESS_DENIED;
+		   CloseHandle(handle);
+		   return FALSE;
+		 }
+	   */
+	}
+	if( info.dwFileAttributes & FILE_ATTRIBUTE_READONLY ) {
+		/* Remove read-only attribute */
+		FILE_BASIC_INFORMATION basic = { 0 };
+		basic.FileAttributes = ( info.dwFileAttributes & ~FILE_ATTRIBUTE_READONLY ) |
+			FILE_ATTRIBUTE_ARCHIVE;
+		status = pNtSetInformationFile( handle,
+			&iosb,
+			&basic,
+			sizeof basic,
+			(FILE_INFORMATION_CLASS)FileBasicInformation );
+		if( !NT_SUCCESS( status ) ) {
+			CloseHandle( handle );
+			return FALSE;
+		}
+	}
+	/* Try to set the delete flag. */
+	disposition.DeleteFile = TRUE;
+	status = pNtSetInformationFile( handle,
+		&iosb,
+		&disposition,
+		sizeof disposition,
+		(FILE_INFORMATION_CLASS)FileDispositionInformation );
+	if( NT_SUCCESS( status ) ) {
+	}
+	else {
+		return FALSE;
+	}
+	CloseHandle( handle );
+	return TRUE;
 }
 #endif
-static int CPROC sack_filesys_unlink( uintptr_t psv, const char*filename ) {
+static int CPROC sack_filesys_unlink( uintptr_t psv, const char* filename ) {
 	int okay = 0;
-	struct file *file = FindFileByName( 0, filename, (*winfile_local).default_mount, NULL );
+	if( !FileSysThreadInfo.mounted_file_systems )FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+	struct file* file = FindFileByName( 0, filename, ( *winfile_local )._mounted_file_systems, NULL );
 	if( file ) file->deleted = 1;
 #ifdef WIN32
 	okay = windowDeepDelete( filename );
@@ -65386,7 +65406,7 @@ static int CPROC sack_filesys_unlink( uintptr_t psv, const char*filename ) {
 	}
 	return okay;
 }
-static size_t CPROC sack_filesys_size( void*file ) {
+static size_t CPROC sack_filesys_size( void* file ) {
 	size_t here = ftell( (FILE*)file );
 	size_t length;
 	fseek( (FILE*)file, 0, SEEK_END );
@@ -65409,8 +65429,8 @@ static size_t CPROC sack_filesys_size( void*file ) {
 #endif
 	return length;
 }
-static size_t CPROC sack_filesys_tell( void*file ) { return ftell( (FILE*)file ); }
-static void CPROC sack_filesys_truncate( void*file ) {
+static size_t CPROC sack_filesys_tell( void* file ) { return ftell( (FILE*)file ); }
+static void CPROC sack_filesys_truncate( void* file ) {
  // disable ignoring return value of chsize; nothing to do if it fails.
 #pragma warning( disable:  6031 )
 #if _WIN32
@@ -65419,31 +65439,31 @@ static void CPROC sack_filesys_truncate( void*file ) {
 	ftruncate( fileno( (FILE*)file ), ftell( (FILE*)file ) );
 #endif
 }
-static int CPROC sack_filesys_flush( void*file ) { return fflush( (FILE*)file ); }
-static int CPROC sack_filesys_exists( uintptr_t psv, const char*file );
-static LOGICAL CPROC sack_filesys_rename( uintptr_t psvInstance, const char *original_name, const char *new_name );
+static int CPROC sack_filesys_flush( void* file ) { return fflush( (FILE*)file ); }
+static int CPROC sack_filesys_exists( uintptr_t psv, const char* file );
+static LOGICAL CPROC sack_filesys_rename( uintptr_t psvInstance, const char* original_name, const char* new_name );
 static LOGICAL CPROC sack_filesys_copy_write_buffer( void ) { return FALSE; }
 struct find_cursor_data {
-	char *root;
-	wchar_t *filemask;
-	char *mask;
+	char* root;
+	wchar_t* filemask;
+	char* mask;
 	char namebuf[256];
 #ifdef WIN32
 	intptr_t findHandle;
 	struct _wfinddata_t fileinfo;
 #else
 	DIR* handle;
-	struct dirent *de;
+	struct dirent* de;
 #endif
 };
-static	struct find_cursor * CPROC sack_filesys_find_create_cursor ( uintptr_t psvInstance, const char *root, const char *filemask ){
-	struct find_cursor_data *cursor = New( struct find_cursor_data );
+static	struct find_cursor* CPROC sack_filesys_find_create_cursor( uintptr_t psvInstance, const char* root, const char* filemask ) {
+	struct find_cursor_data* cursor = New( struct find_cursor_data );
 	char maskbuf[512];
 	MemSet( cursor, 0, sizeof( *cursor ) );
 	//snprintf( maskbuf, 512, "%s/%s", root ? root : ".", filemask?filemask:"*" );
 	snprintf( maskbuf, 512, "%s" PATHCHAR "%s", root ? root : ".", "*" );
 	cursor->mask = StrDup( filemask );
-	cursor->root = StrDup( root?root:"." );
+	cursor->root = StrDup( root ? root : "." );
 	{
 // StrDup( filemask ? filemask : "*" );
 		char* mask = ExpandPath( maskbuf );
@@ -65451,14 +65471,14 @@ static	struct find_cursor * CPROC sack_filesys_find_create_cursor ( uintptr_t ps
 		Deallocate( char*, mask );
 	}
 #ifdef WIN32
-   // windows mode is delayed until findfirst
+	// windows mode is delayed until findfirst
 #else
-	cursor->handle = opendir( root?root:"." );
+	cursor->handle = opendir( root ? root : "." );
 #endif
-	return (struct find_cursor *)cursor;
+	return ( struct find_cursor* )cursor;
 }
-static	int CPROC sack_filesys_find_first( struct find_cursor *_cursor ){
-	struct find_cursor_data *cursor = (struct find_cursor_data *)_cursor;
+static	int CPROC sack_filesys_find_first( struct find_cursor* _cursor ) {
+	struct find_cursor_data* cursor = ( struct find_cursor_data* )_cursor;
 #ifdef WIN32
 	cursor->findHandle = _wfindfirst( cursor->filemask, &cursor->fileinfo );
 	return ( cursor->findHandle != -1 );
@@ -65472,35 +65492,35 @@ static	int CPROC sack_filesys_find_first( struct find_cursor *_cursor ){
 	return 0;
 #endif
 }
-static	int CPROC sack_filesys_find_close( struct find_cursor *_cursor ){
-	struct find_cursor_data *cursor = (struct find_cursor_data *)_cursor;
+static	int CPROC sack_filesys_find_close( struct find_cursor* _cursor ) {
+	struct find_cursor_data* cursor = ( struct find_cursor_data* )_cursor;
 #ifdef WIN32
 	findclose( cursor->findHandle );
 #else
 	if( cursor->handle )
 		closedir( cursor->handle );
 #endif
-	Deallocate( char *, cursor->root );
-	Deallocate( char *, cursor->mask );
-	Deallocate( wchar_t *, cursor->filemask );
-	Deallocate( struct find_cursor_data *, cursor );
+	Deallocate( char*, cursor->root );
+	Deallocate( char*, cursor->mask );
+	Deallocate( wchar_t*, cursor->filemask );
+	Deallocate( struct find_cursor_data*, cursor );
 	return 0;
 }
-static	int CPROC sack_filesys_find_next( struct find_cursor *_cursor ){
-   int r;
-   struct find_cursor_data *cursor = (struct find_cursor_data *)_cursor;
+static	int CPROC sack_filesys_find_next( struct find_cursor* _cursor ) {
+	int r;
+	struct find_cursor_data* cursor = ( struct find_cursor_data* )_cursor;
 #ifdef WIN32
-   r = !_wfindnext( cursor->findHandle, &cursor->fileinfo );
+	r = !_wfindnext( cursor->findHandle, &cursor->fileinfo );
 #else
 	do {
 		cursor->de = readdir( cursor->handle );
 	} while( cursor->de && !CompareMask( cursor->mask, cursor->de->d_name, 0 ) );
-   r = (cursor->de != NULL );
+	r = ( cursor->de != NULL );
 #endif
-   return r;
+	return r;
 }
-static	char * CPROC sack_filesys_find_get_name( struct find_cursor *_cursor ){
-   struct find_cursor_data *cursor = (struct find_cursor_data *)_cursor;
+static	char* CPROC sack_filesys_find_get_name( struct find_cursor* _cursor ) {
+	struct find_cursor_data* cursor = ( struct find_cursor_data* )_cursor;
 #ifdef WIN32
 #   ifdef UNDER_CE
 	return cursor->fileinfo.cFileName;
@@ -65516,11 +65536,11 @@ static	char * CPROC sack_filesys_find_get_name( struct find_cursor *_cursor ){
 	return cursor->namebuf;
 #   endif
 #else
-   return cursor->de->d_name;
+	return cursor->de->d_name;
 #endif
 }
-static	size_t CPROC sack_filesys_find_get_size( struct find_cursor *_cursor ) {
-	struct find_cursor_data *cursor = (struct find_cursor_data *)_cursor;
+static	size_t CPROC sack_filesys_find_get_size( struct find_cursor* _cursor ) {
+	struct find_cursor_data* cursor = ( struct find_cursor_data* )_cursor;
 #ifdef WIN32
 	if( cursor )
 		return cursor->fileinfo.size;
@@ -65534,15 +65554,15 @@ static	size_t CPROC sack_filesys_find_get_size( struct find_cursor *_cursor ) {
 			lprintf( "getsize stat error:%d", errno );
 			return -2;
 		}
-		if( S_ISREG(s.st_mode) )
+		if( S_ISREG( s.st_mode ) )
 			return s.st_size;
 		return -1;
 	}
 #endif
 	return 0;
 }
-static	uint64_t CPROC sack_filesys_find_get_ctime( struct find_cursor *_cursor ) {
-	struct find_cursor_data *cursor = (struct find_cursor_data *)_cursor;
+static	uint64_t CPROC sack_filesys_find_get_ctime( struct find_cursor* _cursor ) {
+	struct find_cursor_data* cursor = ( struct find_cursor_data* )_cursor;
 #ifdef WIN32
 	if( cursor )
 		return cursor->fileinfo.time_create;
@@ -65561,8 +65581,8 @@ static	uint64_t CPROC sack_filesys_find_get_ctime( struct find_cursor *_cursor )
 #endif
 	return 0;
 }
-static	uint64_t CPROC sack_filesys_find_get_wtime( struct find_cursor *_cursor ) {
-	struct find_cursor_data *cursor = (struct find_cursor_data *)_cursor;
+static	uint64_t CPROC sack_filesys_find_get_wtime( struct find_cursor* _cursor ) {
+	struct find_cursor_data* cursor = ( struct find_cursor_data* )_cursor;
 #ifdef WIN32
 	if( cursor )
 		return cursor->fileinfo.time_write;
@@ -65581,21 +65601,21 @@ static	uint64_t CPROC sack_filesys_find_get_wtime( struct find_cursor *_cursor )
 #endif
 	return 0;
 }
-static	LOGICAL CPROC sack_filesys_find_is_directory( struct find_cursor *_cursor ){
-	struct find_cursor_data *cursor = (struct find_cursor_data *)_cursor;
+static	LOGICAL CPROC sack_filesys_find_is_directory( struct find_cursor* _cursor ) {
+	struct find_cursor_data* cursor = ( struct find_cursor_data* )_cursor;
 #ifdef WIN32
 #  ifdef UNDER_CE
-	return ( cursor->fileinfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+	return ( cursor->fileinfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY );
 #  else
-	return (cursor->fileinfo.attrib & _A_SUBDIR );
+	return ( cursor->fileinfo.attrib & _A_SUBDIR );
 #  endif
 #else
 	char buffer[MAX_PATH_NAME];
-	snprintf( buffer, MAX_PATH_NAME, "%s%s%s", cursor->root, cursor->root[0]?"/":"", cursor->de->d_name );
+	snprintf( buffer, MAX_PATH_NAME, "%s%s%s", cursor->root, cursor->root[0] ? "/" : "", cursor->de->d_name );
 	return IsPath( buffer );
 #endif
 }
-static	LOGICAL CPROC sack_filesys_is_directory( uintptr_t psvInstance, const char *buffer ){
+static	LOGICAL CPROC sack_filesys_is_directory( uintptr_t psvInstance, const char* buffer ) {
 	return IsPath( buffer );
 }
 static struct file_system_interface native_fsi = {
@@ -65638,22 +65658,25 @@ PRIORITY_PRELOAD( InitWinFileSysEarly, OSALOT_PRELOAD_PRIORITY - 1 )
 	LocalInit();
 	if( !sack_get_filesystem_interface( "native" ) )
 		sack_register_filesystem_interface( "native", &native_fsi );
-	if( !(*winfile_local).default_mount )
-		(*winfile_local).default_mount = sack_mount_filesystem( "native", &native_fsi, 1000, (uintptr_t)NULL, TRUE );
+	if( !( *winfile_local )._default_mount )
+		( *winfile_local )._default_mount = sack_mount_filesystem( "native", &native_fsi, 1000, (uintptr_t)NULL, TRUE );
+	FileSysThreadInfo.default_mount = ( *winfile_local )._default_mount;
+#ifdef WIN32
 	pNtSetInformationFile = (sNtSetInformationFile)LoadFunction(
 		"ntdll.dll",
 		"NtSetInformationFile" );
+#endif
 }
 #if !defined( __NO_OPTIONS__ )
 PRELOAD( InitWinFileSys )
 {
 #  if !defined( __FILESYS_NO_FILE_LOGGING__ )
-	(*winfile_local).flags.bLogOpenClose = SACK_GetProfileIntEx( "SACK/filesys", "Log open and close", (*winfile_local).flags.bLogOpenClose, TRUE );
+	( *winfile_local ).flags.bLogOpenClose = SACK_GetProfileIntEx( "SACK/filesys", "Log open and close", ( *winfile_local ).flags.bLogOpenClose, TRUE );
 #  endif
 }
 #endif
-static void * CPROC sack_filesys_open( uintptr_t psv, const char *filename, const char *opts ) {
-	void *result;
+static void* CPROC sack_filesys_open( uintptr_t psv, const char* filename, const char* opts ) {
+	void* result;
 #ifdef _WIN32
 	wchar_t* wfilename = CharWConvert( filename );
 	wchar_t* wopts = CharWConvert( opts );
@@ -65665,15 +65688,15 @@ static void * CPROC sack_filesys_open( uintptr_t psv, const char *filename, cons
 #endif
 	return result;
 }
-static int CPROC sack_filesys_exists( uintptr_t psv, const char *filename ) {
+static int CPROC sack_filesys_exists( uintptr_t psv, const char* filename ) {
 	//int result;
 	//result = sack_existsEx( filename, NULL );//(*winfile_local).default_mount );
 	FILE* tmp;
 #ifdef WIN32
-	wchar_t *wfilename = CharWConvert( filename );
-	if( (tmp = _wfopen( wfilename, L"rb" )) ) {
+	wchar_t* wfilename = CharWConvert( filename );
+	if( ( tmp = _wfopen( wfilename, L"rb" ) ) ) {
 #else
-	if( (tmp = fopen( filename, "rb" )) ) {
+	if( ( tmp = fopen( filename, "rb" ) ) ) {
 #endif
 		fclose( tmp );
 #ifdef WIN32
@@ -65685,85 +65708,102 @@ static int CPROC sack_filesys_exists( uintptr_t psv, const char *filename ) {
 	Deallocate( wchar_t*, wfilename );
 #endif
 	return FALSE;
+	}
+struct file_system_mounted_interface* sack_get_default_mount( void ) {
+	return FileSysThreadInfo.default_mount;
 }
-struct file_system_mounted_interface *sack_get_default_mount( void ) { return (*winfile_local).default_mount; }
-struct file_system_interface * sack_get_mounted_filesystem_interface( struct file_system_mounted_interface *mount ){
+struct file_system_interface* sack_get_mounted_filesystem_interface( struct file_system_mounted_interface* mount ) {
 	if( mount )
 		return mount->fsi;
 	return NULL;
 }
-uintptr_t sack_get_mounted_filesystem_instance( struct file_system_mounted_interface *mount ){
+uintptr_t sack_get_mounted_filesystem_instance( struct file_system_mounted_interface* mount ) {
 	if( mount )
 		return mount->psvInstance;
 	return 0;
 }
-struct file_system_mounted_interface *sack_get_mounted_filesystem( const char *name )
+struct file_system_mounted_interface* sack_get_mounted_filesystem( const char* name )
 {
-	struct file_system_mounted_interface *root = (*winfile_local).mounted_file_systems;
-	while( root )
-	{
+	if( !FileSysThreadInfo.mounted_file_systems )FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+	struct file_system_mounted_interface* root = FileSysThreadInfo.mounted_file_systems;
+	while( root ) {
 		if( root->name ) if( stricmp( root->name, name ) == 0 ) break;
-		root = NextThing( root );
+		root =  root ->nextLayer;
 	}
 	return root;
 }
-void sack_unmount_filesystem( struct file_system_mounted_interface *mount )
+void sack_unmount_filesystem( struct file_system_mounted_interface* mount )
 {
-	if( mount )
-		UnlinkThing( mount );
+	struct file_system_mounted_interface* isMount = FileSysThreadInfo.mounted_file_systems;
+	struct file_system_mounted_interface* priorMount = NULL;
+	while( isMount ) {
+		if( isMount == mount ) {
+			break;
+		}
+		priorMount = isMount;
+		isMount = isMount->nextLayer;
+	}
+	if( isMount ) {
+		if( !priorMount )
+			FileSysThreadInfo.mounted_file_systems = mount->nextLayer;
+		else
+			priorMount->nextLayer = mount->nextLayer;
+	}
 }
-LOGICAL CPROC sack_filesys_rename( uintptr_t psvInstance, const char *original_name, const char *new_name ){
+LOGICAL CPROC sack_filesys_rename( uintptr_t psvInstance, const char* original_name, const char* new_name ) {
 	return sack_renameEx( original_name, new_name, NULL );
 }
-struct file_system_mounted_interface *sack_mount_filesystem( const char *name, struct file_system_interface *fsi, int priority, uintptr_t psvInstance, LOGICAL writable )
+struct file_system_mounted_interface* sack_mount_filesystem( const char* name, struct file_system_interface* fsi, int priority, uintptr_t psvInstance, LOGICAL writable )
 {
-	struct file_system_mounted_interface *root = (*winfile_local).mounted_file_systems;
-	struct file_system_mounted_interface *mount = New( struct file_system_mounted_interface );
-	mount->name = name?strdup( name ):NULL;
+	if( !FileSysThreadInfo.mounted_file_systems )FileSysThreadInfo.mounted_file_systems = ( *winfile_local )._mounted_file_systems;
+	struct file_system_mounted_interface* root = FileSysThreadInfo.mounted_file_systems;
+	struct file_system_mounted_interface* mount = New( struct file_system_mounted_interface );
+	mount->name = name ? strdup( name ) : NULL;
 	mount->priority = priority;
 	mount->psvInstance = psvInstance;
 	mount->writeable = writable;
 	mount->fsi = fsi;
 	//lprintf( "Create mount called %s ", name );
-	if( !root || ( root->priority >= priority ) )
-	{
-		if( !root || root == (*winfile_local).mounted_file_systems )
-		{
-			LinkThing( (*winfile_local).mounted_file_systems, mount );
-		}
-		else
-		{
-			LinkThingBefore( root, mount );
-		}
+	if( !root || ( root->priority >= priority ) ) {
+		mount->nextLayer = root;
+ // higher priorirty, layer this thread's higher priority version.
+		FileSysThreadInfo.mounted_file_systems = mount;
 	}
-	else while( root )
-	{
-		if( root->priority >= priority )
-		{
- //-V595
-			LinkThingBefore( root, mount );
-			break;
-		}
-		if( !NextThing( root ) )
-		{
-			LinkThingAfter( root, mount );
-			break;
-		}
-		root = NextThing( root );
+	else {
+		// allow a way to get away from the default filesystem.
+		mount->nextLayer = NULL;
+		FileSysThreadInfo.default_mount = mount;
+ // higher priorirty, layer this thread's higher priority version.
+		FileSysThreadInfo.mounted_file_systems = mount;
 	}
+	/*
+		while( root )
+		{
+			if( root->priority >= priority )
+			{
+				LinkThingBefore( root, mount ); //-V595
+				break;
+			}
+			if( ! root ->nextLayer )
+			{
+				LinkThingAfter( root, mount );
+				break;
+			}
+			root =  root ->nextLayer;
+		}
+	*/
 	return mount;
 }
-int sack_vfprintf( FILE *file_handle, const char *format, va_list args )
+int sack_vfprintf( FILE * file_handle, const char* format, va_list args )
 {
-	struct file *file;
+	struct file* file;
 	file = FindFileByFILE( file_handle );
-	if( file->mount && file->mount->fsi )
-	{
+	if( file->mount && file->mount->fsi ) {
 		PVARTEXT pvt;
 		PTEXT output;
 		int r;
 #ifdef UNICODE
-		TEXTCHAR *_format = DupCStr( format );
+		TEXTCHAR* _format = DupCStr( format );
 #define format _format
 #endif
 		pvt = VarTextCreate();
@@ -65780,23 +65820,22 @@ int sack_vfprintf( FILE *file_handle, const char *format, va_list args )
 	else
 		return vfprintf( file_handle, format, args );
 }
-int sack_fprintf( FILE *file, const char *format, ... )
+int sack_fprintf( FILE * file, const char* format, ... )
 {
 	va_list args;
 	va_start( args, format );
 	return sack_vfprintf( file, format, args );
 }
-int sack_fputs( const char *format,FILE *file )
+int sack_fputs( const char* format, FILE * file )
 {
-	if( format )
-	{
+	if( format ) {
 		size_t len = strlen( format );
 		return (int)( sack_fwrite( format, 1, (int)len, file ) & 0x7FFFFFFF );
 	}
 	return 0;
 }
-uintptr_t sack_ioctl( FILE *file_handle, uintptr_t opCode, ... ) {
-	struct file *file;
+uintptr_t sack_ioctl( FILE * file_handle, uintptr_t opCode, ... ) {
+	struct file* file;
 	va_list args;
 	va_start( args, opCode );
 	file = FindFileByFILE( file_handle );
@@ -65804,11 +65843,11 @@ uintptr_t sack_ioctl( FILE *file_handle, uintptr_t opCode, ... ) {
 		return file->mount->fsi->ioctl( (uintptr_t)file_handle, opCode, args );
 	}
 	else {
-		 // unknown file handle; ignore unknown ioctl.
+		// unknown file handle; ignore unknown ioctl.
 	}
 	return 0;
 }
-uintptr_t sack_fs_ioctl( struct file_system_mounted_interface *mount, uintptr_t opCode, ... ) {
+uintptr_t sack_fs_ioctl( struct file_system_mounted_interface* mount, uintptr_t opCode, ... ) {
 	va_list args;
 	va_start( args, opCode );
 	if( mount && mount->fsi && mount->fsi->fs_ioctl ) {
@@ -65839,6 +65878,9 @@ LOGICAL SetFileLength( CTEXTSTR path, size_t length )
 	sack_iset_eof( file );
 	sack_iclose( file );
 	return TRUE;
+}
+void sack_filesys_enable_thread_mounts( void ) {
+	FileSysThreadInfo._mounted_file_systems = &FileSysThreadInfo.thread_local_mounted_file_systems;
 }
 FILESYS_NAMESPACE_END
 #define NO_UNICODE_C
@@ -66143,7 +66185,7 @@ struct find_cursor *GetScanFileCursor( void *pInfo ) {
 					SimpleRegisterAndCreateGlobal( winfile_local );
 				//lprintf( "... %p", winfile_local );
 				pData->single_mount = FALSE;
-				pData->scanning_mount = (*winfile_local).mounted_file_systems;
+				pData->scanning_mount = FileSysThreadInfo.mounted_file_systems;
 			}
 			else
 				pData->single_mount = TRUE;
@@ -66273,7 +66315,7 @@ struct find_cursor *GetScanFileCursor( void *pInfo ) {
 				//closedir( findhandle( pInfo ) );
 #endif
 			}
-			pData->scanning_mount = NextThing( pData->scanning_mount );
+			pData->scanning_mount =  pData->scanning_mount ->nextLayer;
 			if( !pData->scanning_mount || pData->single_mount )
 			{
 				(*pData->root_info) = pData->prior;
@@ -66322,7 +66364,7 @@ getnext:
 				closedir( (DIR*)findhandle(pInfo));
 #endif
 			}
-			pData->scanning_mount = NextThing( pData->scanning_mount );
+			pData->scanning_mount =  pData->scanning_mount ->nextLayer;
 			//lprintf( "Step mount... %p %d", pData->scanning_mount, pData->single_mount );
 			if( !pData->scanning_mount || pData->single_mount )
 			{

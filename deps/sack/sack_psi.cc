@@ -69666,12 +69666,11 @@ int RegisterIconEx( CTEXTSTR user_icon DBG_PASS )
 //----------------------------------------------------------------------
 void ChangeIconEx( CTEXTSTR icon DBG_PASS )
 {
-	if( !ghWndIcon )
-	{
+#ifdef WIN32
+	if( !ghWndIcon ) {
 		RegisterIcon( icon );
 		return;
 	}
-#ifdef WIN32
 	nid.cbSize = sizeof( NOTIFYICONDATA );
 	nid.hWnd = ghWndIcon;
 	nid.uID = 0;

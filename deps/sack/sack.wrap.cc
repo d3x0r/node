@@ -13,6 +13,14 @@ extern "C"
 
 #endif
 
+extern "C" LOGICAL sack_system_allow_spawn(void ){
+	return sack::system::sack_system_allow_spawn();
+}
+
+extern "C" void sack_system_disallow_spawn(void ){
+	sack::system::sack_system_disallow_spawn();
+}
+
 extern "C"
 	PGENERICSET GetFromSetPoolEx( GENERICSET **pSetSet
 													 , int setsetsize, int setunitsize, int setmaxcnt

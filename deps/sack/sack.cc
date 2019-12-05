@@ -64400,16 +64400,8 @@ static int sack_filesys_rmdir( uintptr_t psv, CTEXTSTR filename )
 {
 #ifdef __LINUX__
 	int okay;
-	TEXTSTR tmp = PrependBasePath( group, NULL, filename );
-#ifdef UNICODE
-	char* tmpname = CStrDup( tmp );
-	okay = rmdir( tmpname );
-	Deallocate( char*, tmpname );
-#else
 	okay = rmdir( filename );
-#endif
-	Deallocate( TEXTCHAR*, tmp );
- // unlink returns TRUE is 0, else error...
+	// unlink returns TRUE is 0, else error...
 	return !okay;
 #else
 	int okay;

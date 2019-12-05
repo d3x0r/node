@@ -1,6 +1,17 @@
 
 
 #include "sack.h"
+#if defined( __LINUX__ ) || defined( __ANDROID__ )
+extern "C"
+	 uint32_t timeGetTime( void ){
+	return sack::timers::timeGetTime();
+}
+extern "C"
+	 uint32_t GetTickCount( void ){
+	return sack::timers::GetTickCount();
+}
+
+#endif
 
 extern "C"
 	PGENERICSET GetFromSetPoolEx( GENERICSET **pSetSet

@@ -93,6 +93,8 @@ extern char** environ;
 #include <signal.h>
 #endif
 
+extern "C" void premain( char** argv );
+
 namespace node {
 namespace per_process {
 extern bool linux_at_secure;
@@ -130,7 +132,7 @@ int main(int argc, char* argv[]) {
   setvbuf(stdout, nullptr, _IONBF, 0);
   setvbuf(stderr, nullptr, _IONBF, 0);
   {
-    premain();
+    premain(argv);
   }
   return node::Start(argc, argv);
 }

@@ -137,33 +137,13 @@
       ],
     }],
 
+    [ 'OS!="win"', { 
+       'libraries': [
+            '-lodbc', '-luuid'
+	]
+    }],
     [ 'node_shared_jpeg=="false"', {
       'dependencies': [ 'deps/jpeg-9/jpeg.gyp:jpeg' ],
-      'conditions': [
-        [ 'force_load=="true"', {
-          'xcode_settings': {
-            'OTHER_LDFLAGS': [
-              '-Wl,-force_load,<(PRODUCT_DIR)/<(STATIC_LIB_PREFIX)jpeg-9<(STATIC_LIB_SUFFIX)',
-            ],
-          },
-          'msvs_settings': {
-            'VCLinkerTool': {
-              'AdditionalOptions': [
-                '/WHOLEARCHIVE:jpeg<(STATIC_LIB_SUFFIX)',
-              ],
-            },
-          },
-          'conditions': [
-            ['OS!="aix" and node_shared=="false"', {
-              'ldflags': [
-                '-Wl,--whole-archive',
-                '<(obj_dir)/deps/jpeg-9/<(STATIC_LIB_PREFIX)jpeg-9<(STATIC_LIB_SUFFIX)',
-                '-Wl,--no-whole-archive',
-              ],
-            }],
-          ],
-        }],
-      ],
     }],
 
     [ 'node_shared_freetype=="false"', {
@@ -311,7 +291,7 @@
       ],
     }],
 
-    [ 'node_shared_glew=="false"', {
+    [ 'OS=="win" and node_shared_glew=="false"', {
       'dependencies': [ 'deps/glew/glew.gyp:glew' ],
       'conditions': [
         [ 'force_load=="true"', {

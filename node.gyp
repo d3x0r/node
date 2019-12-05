@@ -553,12 +553,6 @@
         'src/loader/jsInterface/thread_module.cc',
         'src/loader/jsInterface/tls_interface.cc',
         'src/loader/jsInterface/websocket_module.cc',
-        'src/loader/jsInterface/gui/sack_image_module.cc',
-        'src/loader/jsInterface/gui/sack_intershell_module.cc',
-        'src/loader/jsInterface/gui/sack_psi_module.cc',
-        'src/loader/jsInterface/gui/sack_render_module.cc',
-        'src/loader/jsInterface/gui/sack_systray.cc',
-        #'src/loader/jsInterface/gui/sack_vulkan_module.cc',
         'src/module_wrap.cc',
         'src/node.cc',
         'src/node_api.cc',
@@ -725,7 +719,6 @@
         # Warn when using deprecated V8 APIs.
         'V8_DEPRECATION_WARNINGS=1',
         'NODE_OPENSSL_SYSTEM_CERT_PATH="<(openssl_system_ca_path)"',
-        'INCLUDE_GUI=1',
       ],
 
       # - "C4244: conversion from 'type1' to 'type2', possible loss of data"
@@ -755,6 +748,17 @@
           'defines': [ 'HAVE_INSPECTOR=0' ]
         }],
         [ 'OS=="win"', {
+          'sources':[
+        'src/loader/jsInterface/gui/sack_image_module.cc',
+        'src/loader/jsInterface/gui/sack_intershell_module.cc',
+        'src/loader/jsInterface/gui/sack_psi_module.cc',
+        'src/loader/jsInterface/gui/sack_render_module.cc',
+        'src/loader/jsInterface/gui/sack_systray.cc'
+        #'src/loader/jsInterface/gui/sack_vulkan_module.cc'
+          ],
+          'defines':[
+        'INCLUDE_GUI=1'
+          ],
           'conditions': [
             [ 'node_intermediate_lib_type!="static_library"', {
               'sources': [

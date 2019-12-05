@@ -9,7 +9,8 @@
           'type': 'static_library',
           'sources': [
           
-                    'sack.cc', 'sack_psi.cc', 'sack_imglib.cc', 'sack_imglib_puregl2.cc', 'sack_vidlib.cc', 'sack_vidlib_puregl2.cc', 'sack.wrap.cc', 'sqlite3.c'
+                    'sack.cc'
+		, 'sack.wrap.cc', 'sqlite3.c'
 
           ],
           'include_dirs': [
@@ -23,9 +24,17 @@
           },
 	  'defines': ['SQLITE_ENABLE_COLUMN_METADATA','HAVE_SSL','STATIC_RENDER_INTERFACE'],
           'conditions': [
+            ['OS=="win"', {
+               'sources':[
+		 'sack_psi.cc', 'sack_imglib.cc', 'sack_imglib_puregl2.cc', 'sack_vidlib.cc', 'sack_vidlib_puregl2.cc'
+               ]
+            }],
             ['OS!="win"', {
-              'cflags!': [  ],
-              'defines': [  ],
+              'cflags': [ '-Wno-implicit-fallthrough', '-Wno-char-subscripts', 
+                      '-Wno-parentheses', '-Wno-address-of-packed-member','-Wno-unused-variable',
+                      '-Wno-missing-field-initializers', '-Wno-unused-but-set-variable',
+                      '-Wno-maybe-uninitialized' ],
+              'defines': [ ],
             }],
             ['OS=="mac" or OS=="ios" or OS=="freebsd" or OS=="android"', {
               # Mac, Android and the BSDs don't have fopen64, ftello64, or

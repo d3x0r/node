@@ -1,4 +1,4 @@
-#include "../../deps/uv/src/sack.h"
+#include "../../deps/sack/sack.h"
 
 #include "memory_dll_loader.h"
 #include "app-signature.h"
@@ -99,7 +99,9 @@ static LOGICAL CPROC LoadLibraryDependant( CTEXTSTR name )
 #ifdef DEBUG_LIBRARY_LOADING
 				lprintf( "written file... closed file...now scanning and then load %d %d", read, written );
 #endif
+#ifdef WIN32
 				ScanLoadLibraryFromMemory( name, data, sz, TRUE, LoadLibraryDependant );
+#endif
 				//if( !LoadFunction( name, NULL ) )
 				{
 					LoadFunction( tmpnam, NULL );
@@ -168,10 +170,14 @@ LOGICAL LoadAttachedFreeload( char **argv ) {
 #endif
 		return FALSE;
 	}
-	
+#ifdef _WIN32
 	freeload = GetExtraData( memory );
+#else
+	freeload = NULL;
+#endif
 //	lprintf( "extra is %d(%08x)\n", vfs_memory, vfs_memory );
-	l.rom_fs = sack_vfs_use_crypt_volume( memory, sz,0, NULL, NULL );//((uint8_t*)freeload - 4096), "nodeChecksum?" )
+	if( freeload )
+		l.rom_fs = sack_vfs_use_crypt_volume( memory, sz,0, NULL, NULL );//((uint8_t*)freeload - 4096), "nodeChecksum?" )
 
 	if( !l.rom_fs ) {
 		//printf( "no rom fs; this will abort entry point. %s %s\n", STRSYM(CMAKE_BUILD_TYPE), STRSYM(CPACK_PACKAGE_VERSION_PATCH) );

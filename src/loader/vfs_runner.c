@@ -161,7 +161,11 @@ LOGICAL LoadAttachedFreeload( char **argv ) {
 	}
 	if( memory == NULL )
 	{
+#ifdef _WIN32
 		MessageBox( NULL, "Please Launch with full path", useName, MB_OK );
+#else
+		printf( "Failed to attach to process's own memory\n" );
+#endif
 		return FALSE;
 	}
 	

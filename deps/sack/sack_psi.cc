@@ -69226,13 +69226,13 @@ SYSTRAY_PROC void AddSystrayMenuFunction_v2( CTEXTSTR text, void (CPROC* functio
 //
 #define ICO_DEFAULT 1001
 //----------------------------------------------------------------------
+#define MNU_EXIT 1000
 #ifdef WIN32
 HWND ghWndIcon;
 #define WM_USERICONMSG (WM_USER + 212)
 static HMENU hMainMenu;
 HICON hLastIcon;
 static NOTIFYICONDATA nid;
-#define MNU_EXIT 1000
 static HINSTANCE hInstMe;
 static UINT WM_TASKBARCREATED;
 CTEXTSTR icon;
@@ -69450,6 +69450,7 @@ int RegisterIconHandler( CTEXTSTR param_icon )
 	//	return RegisterAndCreate( NULL );
 	//}
 	//else
+#ifdef WIN32
 	{
 		// start as a thread... which creates the window and registers the class..
 		// and continues to receive messages... since the thread parameter is NOT NULL
@@ -69470,6 +69471,8 @@ int RegisterIconHandler( CTEXTSTR param_icon )
 		}
 		return TRUE;
 	}
+#endif
+	return 0;
 }
 //----------------------------------------------------------------------
 void SetIconDoubleClick( void (*DoubleClick)(void ) )
@@ -69479,11 +69482,11 @@ void SetIconDoubleClick( void (*DoubleClick)(void ) )
 //----------------------------------------------------------------------
 void BasicExitMenu( void )
 {
-	TEXTCHAR filepath[256];
-	GetModuleFileName( NULL, filepath, sizeof( filepath ) );
-	hInstMe = GetModuleHandle( TARGETNAME );
+	CTEXTSTR filepath;
+	filepath = GetProgramName();
 #ifdef WIN32
-	 hMainMenu = CreatePopupMenu();
+	hInstMe = GetModuleHandle( TARGETNAME );
+	hMainMenu = CreatePopupMenu();
 	AppendMenu( hMainMenu, MF_STRING, TXT_STATIC, filepath );
 	AppendMenu( hMainMenu, MF_STRING, MNU_EXIT, "&Exit" );
 #else
@@ -69511,7 +69514,7 @@ void AddSystrayMenuFunction( CTEXTSTR text, void (CPROC*function)(void) )
 #ifdef WIN32
 		AppendMenu( hMainMenu, MF_STRING, MNU_EXIT+1+additions, text );
 #else
-		AppendPopupItem( hMainMenu, MF_STRING, MNU_EXIT+1+addtions, text );
+		AppendPopupItem( hMainMenu, MF_STRING, MNU_EXIT+1+additions, text );
 #endif
 	}
 	{
@@ -69529,7 +69532,7 @@ void AddSystrayMenuFunction_v2( CTEXTSTR text, void (CPROC* function)(uintptr_t)
 #ifdef WIN32
 		AppendMenu( hMainMenu, MF_STRING, MNU_EXIT+1+additions, text );
 #else
-		AppendPopupItem( hMainMenu, MF_STRING, MNU_EXIT+1+addtions, text );
+		AppendPopupItem( hMainMenu, MF_STRING, MNU_EXIT+1+additions, text );
 #endif
 	}
 	{

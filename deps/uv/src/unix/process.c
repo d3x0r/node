@@ -44,6 +44,7 @@ extern char **environ;
 # include <grp.h>
 #endif
 
+#include <sack.h>
 
 static void uv__chld(uv_signal_t* handle, int signum) {
   uv_process_t* process;
@@ -420,6 +421,8 @@ int uv_spawn(uv_loop_t* loop,
   /* fork is marked __WATCHOS_PROHIBITED __TVOS_PROHIBITED. */
   return UV_ENOSYS;
 #else
+  if( !sack_system_allow_spawn() )
+     return UV_ENOSYS;
   int signal_pipe[2] = { -1, -1 };
   int pipes_storage[8][2];
   int (*pipes)[2];

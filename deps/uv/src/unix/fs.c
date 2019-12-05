@@ -45,6 +45,8 @@
 #include <fcntl.h>
 #include <poll.h>
 
+#include <sack.h>
+
 #if defined(__DragonFly__)        ||                                      \
     defined(__FreeBSD__)          ||                                      \
     defined(__FreeBSD_kernel__)   ||                                      \
@@ -156,8 +158,67 @@ extern char *mkdtemp(char *template); /* See issue #740 on AIX < 7 */
   while (0)
 
 
+struct uv_file_internal {
+   int fd;
+   FILE *file;
+};
+typedef struct uv_file_internal FILE_INTERNAL;
+typedef struct uv_file_internal *PFILE_INTERNAL;
+#define MAXFILE_INTERNALSPERSET 256
+
+DeclareSet( FILE_INTERNAL );
+
+static struct uv_fs_local {
+   PFILE_INTERNALSET files; // list of sturct uv_file_intenal.
+
+} fsl;
+
+
+static void getInternalFD( int fd, int *out_fd, FILE **file ) {
+   if( fd >= 256 ) {
+      PFILE_INTERNAL ifd = GetSetMember( FILE_INTERNAL, &fsl.files, fd -256 );
+      if( ifd )
+         if( ifd->fd != -1 ) {
+            (*out_fd) = ifd->fd;
+            (*file) = NULL;
+         }
+         else {
+            (*out_fd) = -1;
+            (*file) = ifd->file;
+
+         }
+   }
+   else {
+      out_fd[0] = fd;
+      file[0] = NULL;
+   }
+}
+
+static int setInternalFD( int out_fd, FILE *file ) {
+   PFILE_INTERNAL ifd = GetFromSet( FILE_INTERNAL, &fsl.files );
+   int fd = GetMemberIndex( FILE_INTERNAL, &fsl.files, ifd );
+   ifd->fd = out_fd;
+   ifd->file = file;
+   return fd+256;
+}
+
+static void removeFd( int fd ) {
+   if( fd >= 256 )
+      DeleteFromSet( FILE_INTERNAL, fsl.files, (POINTER)(fd-256) );
+
+}
+
+
+
 static int uv__fs_close(int fd) {
   int rc;
+  FILE *file;
+  getInternalFD( fd, &fd, file );
+  if( file ) {
+    removeFd( fd );
+    sack_fclose( file );
+    return;
+  }
 
   rc = uv__close_nocancel(fd);
   if (rc == -1)
@@ -187,6 +248,11 @@ static ssize_t uv__fs_fsync(uv_fs_t* req) {
     r = fsync(req->file);
   return r;
 #else
+  FILE *file;
+  getInternalFD( req->file, &fd, file );
+  if( file ) {
+    return; // noop for us...
+  }
   return fsync(req->file);
 #endif
 }
@@ -199,6 +265,11 @@ static ssize_t uv__fs_fdatasync(uv_fs_t* req) {
   /* See the comment in uv__fs_fsync. */
   return uv__fs_fsync(req);
 #else
+  FILE *file;
+  getInternalFD( req->file, &fd, file );
+  if( file ) {
+    return; // noop for us...
+  }
   return fsync(req->file);
 #endif
 }
@@ -259,6 +330,36 @@ static ssize_t uv__fs_mkdtemp(uv_fs_t* req) {
 
 
 static ssize_t uv__fs_open(uv_fs_t* req) {
+
+  {
+    FILE* f;
+    char openflags[4];
+    int nf = 0;
+
+    if( req->flags & O_RDONLY ) {
+    }
+    if( req->flags & O_WRONLY ) {
+    }
+    if( req->flags & O_RDWR ) {
+    }
+
+    if( req->flags & O_CREAT ) {
+       openfiles[nf++] = 'w';
+    }
+    else
+       openfiles[nf++] = 'r';
+
+    if( !(req->flags & O_TRUNC) ) {
+       openfiles[nf++] = '+';
+    }
+    openfiles[nf++] = 0;
+    f = sack_fopen( 0, req->path, openfiles );
+
+    SET_REQ_RESULT( req, setInternalFD( -1, f ) );
+    return;
+  }
+
+
 #ifdef O_CLOEXEC
   return open(req->path, req->flags | O_CLOEXEC, req->mode);
 #else  /* O_CLOEXEC */
@@ -343,6 +444,24 @@ static ssize_t uv__fs_read(uv_fs_t* req) {
 #endif
   unsigned int iovmax;
   ssize_t result;
+
+  FILE *file;
+  int fd;
+  getInternalFD( req->file, &fd, &file );
+  if( file ) {
+     index = 0;
+     bytes = 0;
+     result = 0;
+     do {
+        DWORD incremental_bytes;
+        incremental_bytes = sack_fread( req->fs.info.bufs[index].base, 1, req->fs.info.bufs[index].len, file );
+        bytes += incremental_bytes;
+        ++index;
+     } while( index < req->fs.info.nbufs );
+    SET_REQ_RESULT(req, bytes);
+    return;
+  }
+
 
   iovmax = uv__getiovmax();
   if (req->nbufs > iovmax)
@@ -933,6 +1052,23 @@ static ssize_t uv__fs_write(uv_fs_t* req) {
   static int no_pwritev;
 #endif
   ssize_t r;
+
+  FILE *file;
+  int fd;
+  getInternalFD( req->file, &fd, &file );
+  if( file ) {
+    index = 0;
+    bytes = 0;
+    do {
+      DWORD incremental_bytes;
+      incremental_bytes = sack_fwrite( req->fs.info.bufs[index].base, 1, req->fs.info.bufs[index].len, file );
+      bytes += incremental_bytes;
+      ++index;
+    } while( index < req->fs.info.nbufs );
+    SET_REQ_RESULT(req, bytes);
+    return;
+  }
+
 
   /* Serialize writes on OS X, concurrent write() and pwrite() calls result in
    * data loss. We can't use a per-file descriptor lock, the descriptor may be

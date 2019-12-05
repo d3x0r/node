@@ -6539,27 +6539,6 @@ TIMER_PROC( PTHREAD, ThreadToSimpleEx )( ThreadSimpleStartProc proc, POINTER par
    thread. If this thread already has this structure created,
    the same one results on subsequent MakeThread calls.        */
 TIMER_PROC( PTHREAD, MakeThread )( void );
-/* Releases resources associated with a PTHREAD. For purposes of
-   waking a thread, and providing a wakeable point for the
-   thread, a system blocking event object is allocated, named
-   with the THREAD_ID so it can be referenced by other
-   processes. This is only allowed to be done by the thread
-   itself.
-   Parameters
-   Param1 :  \Description
-   Param2 :  \Description
-   Example
-   <code lang="c++">
-   int main( void )
-   {
-       PTHREAD myself = MakeThread();
-       // create threads, do stuff...
-       UnmakeThread();
-       At this point the pointer in 'myself' is invalid, and should be cleared.
-       myself = NULL;
-   }
-   </code>                                                                      */
-TIMER_PROC( void, UnmakeThread )( void );
 /* This returns the parameter passed as user data to ThreadTo.
    Parameters
    thread :  thread to get the parameter from.
@@ -13512,27 +13491,6 @@ TIMER_PROC( PTHREAD, ThreadToSimpleEx )( ThreadSimpleStartProc proc, POINTER par
    thread. If this thread already has this structure created,
    the same one results on subsequent MakeThread calls.        */
 TIMER_PROC( PTHREAD, MakeThread )( void );
-/* Releases resources associated with a PTHREAD. For purposes of
-   waking a thread, and providing a wakeable point for the
-   thread, a system blocking event object is allocated, named
-   with the THREAD_ID so it can be referenced by other
-   processes. This is only allowed to be done by the thread
-   itself.
-   Parameters
-   Param1 :  \Description
-   Param2 :  \Description
-   Example
-   <code lang="c++">
-   int main( void )
-   {
-       PTHREAD myself = MakeThread();
-       // create threads, do stuff...
-       UnmakeThread();
-       At this point the pointer in 'myself' is invalid, and should be cleared.
-       myself = NULL;
-   }
-   </code>                                                                      */
-TIMER_PROC( void, UnmakeThread )( void );
 /* This returns the parameter passed as user data to ThreadTo.
    Parameters
    thread :  thread to get the parameter from.
@@ -50078,7 +50036,7 @@ static LOGICAL DoPingExx( CTEXTSTR pstrHost
 #endif
    }
    // Setup destination socket address
-   saDest.sin_addr.s_addr = dwIP;
+   saDest.sin_addr.S_un.S_addr = dwIP;
    saDest.sin_family = AF_INET;
    saDest.sin_port = 0;
    //vtprintf( pvtResult, "Version 1.0   ADA Software Developers, Inc.  Copyright 1999.\n" );
@@ -50178,7 +50136,7 @@ static LOGICAL DoPingExx( CTEXTSTR pstrHost
       }
       else
       {
-         Entry[nEntry].dwIP = _dwIP = saSrc.sin_addr.s_addr;
+         Entry[nEntry].dwIP = _dwIP = saSrc.sin_addr.S_un.S_addr;
       }
       Entry[nEntry].TTL  = cTTL;
       Entry[nEntry].dwMaxTime = ConvertTickToMicrosecond( MaxTime );
@@ -50222,7 +50180,7 @@ LoopBreakpoint:
       char *pIPBuf;
       if( Entry[i].dwIP )
       {
-         saSrc.sin_addr.s_addr = Entry[i].dwIP;
+         saSrc.sin_addr.S_un.S_addr = Entry[i].dwIP;
          pIPBuf = inet_ntoa( *(struct in_addr*)&saSrc.sin_addr );
          nResult = TRUE;
       }

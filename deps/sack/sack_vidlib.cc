@@ -46,6 +46,7 @@ namespace sack {
 }
 #endif
 #endif
+#ifdef _WIN32
 /****************
  * Some performance concerns regarding high numbers of layered windows...
  * every 1000 windows causes 2 - 12 millisecond delays...
@@ -353,13 +354,24 @@ But WHO doesn't have stdint?  BTW is sizeof( size_t ) == sizeof( void* )
 #endif
 #if !defined( __NO_THREAD_LOCAL__ ) && ( defined( _MSC_VER ) || defined( __WATCOMC__ ) )
 #  define HAS_TLS 1
-#  define DeclareThreadLocal static __declspec(thread)
-#  define DeclareThreadVar __declspec(thread)
+#  ifdef __cplusplus
+#    define DeclareThreadLocal thread_local
+#    define DeclareThreadVar  thread_local
+#  else
+#    define DeclareThreadLocal static __declspec(thread)
+#    define DeclareThreadVar __declspec(thread)
+#  endif
 #elif !defined( __NO_THREAD_LOCAL__ ) && ( defined( __GNUC__ ) )
-#  define HAS_TLS 1
-#  define DeclareThreadLocal static __thread
-#  define DeclareThreadVar __thread
+#    define HAS_TLS 1
+#    ifdef __cplusplus
+#      define DeclareThreadLocal thread_local
+#      define DeclareThreadVar thread_local
+#    else
+#    define DeclareThreadLocal static __thread
+#    define DeclareThreadVar __thread
+#  endif
 #else
+// if no HAS_TLS
 #  define DeclareThreadLocal static
 #  define DeclareThreadVar
 #endif
@@ -6532,6 +6544,14 @@ typedef uintptr_t (CPROC*ThreadStartProc)( PTHREAD );
 /* Function signature for a thread entry point passed to
    ThreadToSimple.                                             */
 typedef uintptr_t (*ThreadSimpleStartProc)( POINTER );
+/*
+  OnThreadCreate allows registering a procedure to run
+  when a thread is created.  (Or an existing thread becomes
+  tracked within this library, via MakeThread() ).
+  It is called once per thread, for each thread created
+  after registering the callback.
+*/
+TIMER_PROC( void, OnThreadCreate )( void ( *v )( void ) );
 /* Create a separate thread that starts in the routine
    specified. The uintptr_t value (something that might be a
    pointer), is passed in the PTHREAD structure. (See
@@ -6572,27 +6592,6 @@ TIMER_PROC( PTHREAD, ThreadToSimpleEx )( ThreadSimpleStartProc proc, POINTER par
    thread. If this thread already has this structure created,
    the same one results on subsequent MakeThread calls.        */
 TIMER_PROC( PTHREAD, MakeThread )( void );
-/* Releases resources associated with a PTHREAD. For purposes of
-   waking a thread, and providing a wakeable point for the
-   thread, a system blocking event object is allocated, named
-   with the THREAD_ID so it can be referenced by other
-   processes. This is only allowed to be done by the thread
-   itself.
-   Parameters
-   Param1 :  \Description
-   Param2 :  \Description
-   Example
-   <code lang="c++">
-   int main( void )
-   {
-       PTHREAD myself = MakeThread();
-       // create threads, do stuff...
-       UnmakeThread();
-       At this point the pointer in 'myself' is invalid, and should be cleared.
-       myself = NULL;
-   }
-   </code>                                                                      */
-TIMER_PROC( void, UnmakeThread )( void );
 /* This returns the parameter passed as user data to ThreadTo.
    Parameters
    thread :  thread to get the parameter from.
@@ -23615,6 +23614,206 @@ PUBLIC( void, InvokePreloads )( void )
 }
 #endif
 RENDER_NAMESPACE_END
+#endif
+#ifndef WIN32
+typedef struct xvideo_tag
+{
+	struct {
+		uint32_t bShown : 1;
+	} flags;
+	GC gc;
+	Window win;
+   int x, y, width, height;
+} XPANEL, *PXPANEL;
+typedef struct local_tag
+{
+	struct {
+		uint32_t bInited : 1;
+	} flags;
+	Display* display;
+	int screen_width;
+	int screen_height;
+   int screen_num;
+/* these variables will be used to store the IDs of the black and white */
+/* colors of the given screen. More on this will be explained later.    */
+	unsigned long white_pixel;
+	unsigned long black_pixel;
+} LOCAL;
+static LOCAL l;
+RENDER_PROC (void, UpdateDisplayPortionEx)( PXPANEL pPanel
+                                          , int32_t x, int32_t y
+                                          , uint32_t w, uint32_t h DBG_PASS)
+{
+   ImageFile *pImage;
+   if (pPanel
+       && (pImage = pPanel->pImage) && pPanel->hDCBitmap && pPanel->hDCOutput)
+   {
+      if (!h)
+         h = pImage->height;
+      if (!w)
+         w = pImage->width;
+      //_xlprintf( 1 DBG_RELAY )( "Write to Window: %d %d %d %d", x, y, w, h );
+      if (!pPanel->flags.bShown)
+		{
+         lprintf( "Setting shown..." );
+			pPanel->flags.bShown = TRUE;
+#ifdef LOG_RECT_UPDATE
+			_xlprintf( 1 DBG_RELAY )( "Show Window: %d %d %d %d", x, y, w, h );
+#endif
+// this is done at update...
+			XMapWindow(l.display, pPanel->win);
+		}
+		else
+		{
+         //XCopyPlane(display, bitmap, win, gc,
+         // 0, 0,
+         // bitmap_width, bitmap_height,
+         // 100, 50,
+         // 1);
+			XCopyArea(display, bitmap, win, gc,
+						 0, 0,
+						 bitmap_width, bitmap_height,
+				);
+                   /*
+						 void glDrawPixels( GLsizei width,
+												 GLsizei height,
+												 GLenum format,
+												 GLenum type,
+												 const GLvoid *pixels )
+                   */
+		 }
+	}
+}
+int errorHandler( Display *dpy, XErrorEvent *e )
+{
+    char errorText[1024];
+    XGetErrorText( dpy, e->error_code, errorText, sizeof(errorText) );
+    printf( "**********************************\n" );
+    printf( "X Error: %s\n", errorText );
+    printf( "**********************************\n" );
+    exit( 1 );
+}
+int InitDisplay( void )
+{
+	if( !l.flags.bInited )
+	{
+		char *display_name = getenv( "DISPLAY" );
+		if( !display_name )
+			display_name="127.0.0.1:0";
+		l.display = XOpenDisplay( display_name );
+		if( !l.display )
+		{
+         lprintf( "Failed to connect to X" );
+			return;
+		}
+      l.screen_num = DefaultScreen(l.display);
+		/* find the width of the default screen of our X server, in pixels. */
+		l.screen_width = DisplayWidth(l.display, l.screen_num);
+/* find the height of the default screen of our X server, in pixels. */
+		l.screen_height = DisplayHeight(l.display, l.screen_num);
+/* find the ID of the root window of the screen. */
+		l.root_window = RootWindow(l.display, l.screen_num);
+/* find the value of a white pixel on this screen. */
+		l.white_pixel = WhitePixel(l.display, l.screen_num);
+/* find the value of a black pixel on this screen. */
+		l.black_pixel = BlackPixel(l.display, l.screen_num);
+	}
+}
+BOOL CreateDrawingSurface( PXPANEL *pPanel )
+{
+   /* create the window, as specified earlier. */
+	pPanel->win = XCreateSimpleWindow( l.display
+												, l.root_window
+												, pPanel->x, pPanel->y
+												, pPanel->width, pPanel->height
+												, 0
+												, l.black_pixel
+												, l.white_pixel
+												);
+	XSelectInput( l.display, pPanel->win
+					, ExposureMask
+					| ButtonPressMask
+					| ButtonReleaseMask
+					| KeyPressMask
+					| KeyReleaseMask
+					| EnterWindowMask
+					| LeaveWindowMask
+					| PointerMotionMask
+					| ButtonMotionMask
+					);
+	{
+	/* this variable will contain the color depth of the pixmap to create. */
+	/* this 'depth' specifies the number of bits used to represent a color */
+	/* index in the color map. the number of colors is 2 to the power of   */
+	/* this depth.                                                         */
+		int depth = DefaultDepth(display, DefaultScreen(display));
+		pPanel->pixmap = XCreatePixmap(l.display, l.root_win
+												, width, height
+												, 32);
+	   100, 50	}
+   // this is done at update...
+}
+void ShutdownVideo( void )
+{
+	if( l.flags.bInited )
+	{
+		if( l.display )
+         XCloseDisplay( l.display );
+	}
+}
+/* these variables are used to specify various attributes for the GC. */
+/* initial values for the GC. */
+XGCValues values = CapButt | JoinBevel;
+/* which values in 'values' to check when creating the GC. */
+unsigned long valuemask = GCCapStyle | GCJoinStyle;
+/* create a new graphical context. */
+gc = XCreateGC(display, win, valuemask, &values);
+if (gc < 0) {
+    fprintf(stderr, "XCreateGC: \n");
+}
+static int CPROC ProcessDisplayMessages(void )
+{
+/* this structure will contain the event's data, once received. */
+	XEvent an_event;
+/* enter an "endless" loop of handling events. */
+	while (1) {
+		XNextEvent(display, &an_event);
+		switch (an_event.type) {
+		case Expose:
+									  /* handle this event type... */
+			break;
+		case ButtonPress:
+         break;
+		case ButtonRelease:
+         break;
+		case KeyPress:
+			{
+				int x = an_event.xbutton.x;
+				int y = an_event.xbutton.y;
+				int the_win = an_event.xbutton.window;
+				int button = an_event.xbutton.button;
+            Time time = an_event.xbutton.time;
+			}
+			break;
+		case MotionNotify:
+			x = an_event.xmotion.x;
+			y = an_event.xmotion.y;
+			the_win = an_event.xmotion.window;
+    /* if the 1st mouse button was held during this event, draw a pixel */
+    /* at the mouse pointer location.                                   */
+    if (an_event.xmotion.state & Button1Mask) {
+        /* draw a pixel at the mouse position. */
+        XDrawPoint(display, the_win, gc_draw, x, y);
+    }
+         break;
+		case KeyRelease:
+         break;
+		default:
+			break;
+		}
+	}
+}
+#endif
 RENDER_NAMESPACE
 //------------------------------------------------------------------------
 RENDER_PROC( uint32_t, IsKeyDown )( PVIDEO hVideo, int c )

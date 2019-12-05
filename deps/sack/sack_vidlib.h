@@ -360,13 +360,24 @@ But WHO doesn't have stdint?  BTW is sizeof( size_t ) == sizeof( void* )
 #endif
 #if !defined( __NO_THREAD_LOCAL__ ) && ( defined( _MSC_VER ) || defined( __WATCOMC__ ) )
 #  define HAS_TLS 1
-#  define DeclareThreadLocal static __declspec(thread)
-#  define DeclareThreadVar __declspec(thread)
+#  ifdef __cplusplus
+#    define DeclareThreadLocal thread_local
+#    define DeclareThreadVar  thread_local
+#  else
+#    define DeclareThreadLocal static __declspec(thread)
+#    define DeclareThreadVar __declspec(thread)
+#  endif
 #elif !defined( __NO_THREAD_LOCAL__ ) && ( defined( __GNUC__ ) )
-#  define HAS_TLS 1
-#  define DeclareThreadLocal static __thread
-#  define DeclareThreadVar __thread
+#    define HAS_TLS 1
+#    ifdef __cplusplus
+#      define DeclareThreadLocal thread_local
+#      define DeclareThreadVar thread_local
+#    else
+#    define DeclareThreadLocal static __thread
+#    define DeclareThreadVar __thread
+#  endif
 #else
+// if no HAS_TLS
 #  define DeclareThreadLocal static
 #  define DeclareThreadVar
 #endif
@@ -6539,6 +6550,14 @@ typedef uintptr_t (CPROC*ThreadStartProc)( PTHREAD );
 /* Function signature for a thread entry point passed to
    ThreadToSimple.                                             */
 typedef uintptr_t (*ThreadSimpleStartProc)( POINTER );
+/*
+  OnThreadCreate allows registering a procedure to run
+  when a thread is created.  (Or an existing thread becomes
+  tracked within this library, via MakeThread() ).
+  It is called once per thread, for each thread created
+  after registering the callback.
+*/
+TIMER_PROC( void, OnThreadCreate )( void ( *v )( void ) );
 /* Create a separate thread that starts in the routine
    specified. The uintptr_t value (something that might be a
    pointer), is passed in the PTHREAD structure. (See
@@ -6579,27 +6598,6 @@ TIMER_PROC( PTHREAD, ThreadToSimpleEx )( ThreadSimpleStartProc proc, POINTER par
    thread. If this thread already has this structure created,
    the same one results on subsequent MakeThread calls.        */
 TIMER_PROC( PTHREAD, MakeThread )( void );
-/* Releases resources associated with a PTHREAD. For purposes of
-   waking a thread, and providing a wakeable point for the
-   thread, a system blocking event object is allocated, named
-   with the THREAD_ID so it can be referenced by other
-   processes. This is only allowed to be done by the thread
-   itself.
-   Parameters
-   Param1 :  \Description
-   Param2 :  \Description
-   Example
-   <code lang="c++">
-   int main( void )
-   {
-       PTHREAD myself = MakeThread();
-       // create threads, do stuff...
-       UnmakeThread();
-       At this point the pointer in 'myself' is invalid, and should be cleared.
-       myself = NULL;
-   }
-   </code>                                                                      */
-TIMER_PROC( void, UnmakeThread )( void );
 /* This returns the parameter passed as user data to ThreadTo.
    Parameters
    thread :  thread to get the parameter from.

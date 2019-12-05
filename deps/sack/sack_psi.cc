@@ -5192,6 +5192,14 @@ SYSTEM_PROC( void, OSALOT_PrependEnvironmentVariable )(CTEXTSTR name, CTEXTSTR v
  */
 SYSTEM_PROC( void, ParseIntoArgs )( TEXTCHAR *lpCmdLine, int *pArgc, TEXTCHAR ***pArgv );
 #define UnloadFunction(p) UnloadFunctionEx(p DBG_SRC )
+/*
+   Check if task spawning is allowed...
+*/
+SYSTEM_PROC( LOGICAL, sack_system_allow_spawn )( void );
+/*
+   Disallow task spawning.
+*/
+SYSTEM_PROC( void, sack_system_disallow_spawn )( void );
 SACK_SYSTEM_NAMESPACE_END
 #ifdef __cplusplus
 using namespace sack::system;
@@ -12128,6 +12136,14 @@ SYSTEM_PROC( void, OSALOT_PrependEnvironmentVariable )(CTEXTSTR name, CTEXTSTR v
  */
 SYSTEM_PROC( void, ParseIntoArgs )( TEXTCHAR *lpCmdLine, int *pArgc, TEXTCHAR ***pArgv );
 #define UnloadFunction(p) UnloadFunctionEx(p DBG_SRC )
+/*
+   Check if task spawning is allowed...
+*/
+SYSTEM_PROC( LOGICAL, sack_system_allow_spawn )( void );
+/*
+   Disallow task spawning.
+*/
+SYSTEM_PROC( void, sack_system_disallow_spawn )( void );
 SACK_SYSTEM_NAMESPACE_END
 #ifdef __cplusplus
 using namespace sack::system;

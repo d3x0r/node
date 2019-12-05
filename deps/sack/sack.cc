@@ -5199,6 +5199,14 @@ SYSTEM_PROC( void, OSALOT_PrependEnvironmentVariable )(CTEXTSTR name, CTEXTSTR v
  */
 SYSTEM_PROC( void, ParseIntoArgs )( TEXTCHAR *lpCmdLine, int *pArgc, TEXTCHAR ***pArgv );
 #define UnloadFunction(p) UnloadFunctionEx(p DBG_SRC )
+/*
+   Check if task spawning is allowed...
+*/
+SYSTEM_PROC( LOGICAL, sack_system_allow_spawn )( void );
+/*
+   Disallow task spawning.
+*/
+SYSTEM_PROC( void, sack_system_disallow_spawn )( void );
 SACK_SYSTEM_NAMESPACE_END
 #ifdef __cplusplus
 using namespace sack::system;
@@ -12151,6 +12159,14 @@ SYSTEM_PROC( void, OSALOT_PrependEnvironmentVariable )(CTEXTSTR name, CTEXTSTR v
  */
 SYSTEM_PROC( void, ParseIntoArgs )( TEXTCHAR *lpCmdLine, int *pArgc, TEXTCHAR ***pArgv );
 #define UnloadFunction(p) UnloadFunctionEx(p DBG_SRC )
+/*
+   Check if task spawning is allowed...
+*/
+SYSTEM_PROC( LOGICAL, sack_system_allow_spawn )( void );
+/*
+   Disallow task spawning.
+*/
+SYSTEM_PROC( void, sack_system_disallow_spawn )( void );
 SACK_SYSTEM_NAMESPACE_END
 #ifdef __cplusplus
 using namespace sack::system;
@@ -20655,7 +20671,7 @@ void RecallUserInput( PUSER_INPUT_BUFFER pci, int bUp )
 		}
 		// wrap to a valid position....
 		if( pci->nHistory < 0 )
-			pci->nHistory += pci->InputHistory->Cnt;
+			pci->nHistory += (int)pci->InputHistory->Cnt;
 	}
 	LineRelease( pci->CollectionBuffer );
 	pci->CollectionBuffer = NULL;
@@ -51348,11 +51364,11 @@ static int handleServerName( SSL* ssl, int* al, void* param ) {
 		return 0;
 	}
 	const char* host = SSL_get_servername( ssl, t );
-	int strlen = StrLen( host );
+	int strlen = (int)StrLen( host );
 	//lprintf( "ServerName;%s", host );
 	struct ssl_hostContext* hostctx;
 	struct ssl_hostContext* defaultHostctx;
-	lprintf( "Have hostchange: %.*s", strlen, host );
+	//lprintf( "Have hostchange: %.*s", strlen, host );
 	pcAccept->ssl_session->hostname = DupCStrLen( host, strlen );
 	LIST_FORALL( ctxList[0], idx, struct ssl_hostContext*, hostctx ) {
 		char const* checkName;
@@ -73854,6 +73870,7 @@ typedef struct loaded_library_tag
 	PLIST system_tasks;
 	PLIBRARY libraries;
 	PTREEROOT pFunctionTree;
+	LOGICAL allow_spawn;
 	int nLibrary;
 	LOGICAL (CPROC*ExternalLoadLibrary)( const char *filename );
  // please Release or Deallocate the reutrn value
@@ -75972,6 +75989,13 @@ void SetProgramName( CTEXTSTR filename )
 {
 	SystemInit();
 	l.filename = filename;
+}
+DeclareThreadVar LOGICAL allow_spawn;
+LOGICAL sack_system_allow_spawn( void ) {
+	return allow_spawn;
+}
+void sack_system_disallow_spawn( void ) {
+	allow_spawn = FALSE;
 }
 #undef Seek
 SACK_SYSTEM_NAMESPACE_END
@@ -103368,7 +103392,7 @@ static void __DoODBCBinding( HSTMT hstmt, PDATALIST pdlItems ) {
 	INDEX idx;
 	struct jsox_value_container *val;
 	DATA_FORALL( pdlItems, idx, struct jsox_value_container *, val ) {
-		int useIndex = idx + 1;
+		int useIndex = (int)(idx + 1);
 		int rc;
 		//if( val->name ) {
 		//	useIndex = sqlite3_bind_parameter_index( db, val->name );

@@ -12,7 +12,7 @@
 #if defined( INTERSHELL_CORE_BUILD ) || defined( LEGACY_MAKE_SYSTEM )
 #include "widgets/include/buttons.h"
 #else
-#include "InterShell/widgets/buttons.h"
+#include "widgets/buttons.h"
 #endif
 #ifndef POSTFIX
 #define POSTFIX ""

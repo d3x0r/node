@@ -66304,7 +66304,7 @@ getnext:
 		{
 			PMFD prior = pData->prior;
 			//lprintf( "nothing left to find..." );
-			if( pData->scanning_mount->fsi )
+			if( pData->scanning_mount && pData->scanning_mount->fsi )
 				pData->scanning_mount->fsi->find_close( findcursor(pInfo) );
 			else
 			{

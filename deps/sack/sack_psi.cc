@@ -69198,7 +69198,9 @@ PSI_CLOCK_NAMESPACE_END
 #define NO_OPEN_MACRO
 #define FIX_RELEASE_COM_COLLISION
 //#ifndef __cplusplus_cli
+#ifdef WIN32
 #include	<windowsx.h>
+#endif
 //#endif
 #ifdef SYSTRAY_LIBRARAY
 #define SYSTRAY_PROC EXPORT_METHOD
@@ -69224,15 +69226,22 @@ SYSTRAY_PROC void AddSystrayMenuFunction_v2( CTEXTSTR text, void (CPROC* functio
 //
 #define ICO_DEFAULT 1001
 //----------------------------------------------------------------------
+#ifdef WIN32
 HWND ghWndIcon;
 #define WM_USERICONMSG (WM_USER + 212)
-#ifdef WIN32
 static HMENU hMainMenu;
+HICON hLastIcon;
+static NOTIFYICONDATA nid;
+#define MNU_EXIT 1000
+static HINSTANCE hInstMe;
+static UINT WM_TASKBARCREATED;
+CTEXTSTR icon;
+LOGICAL thread_ready;
 #else
+#define __NO_WIN32API__
 static PMENU hMainMenu;
 #endif
 static void (*DblClkCallback)(void);
-HICON hLastIcon;
 typedef struct addition {
 	CTEXTSTR text;
 	void (CPROC*f2)(uintptr_t);
@@ -69242,10 +69251,6 @@ typedef struct addition {
 } ADDITION, *PADDITION;
 static int additions = 0;
 static PLIST Functions;
-static NOTIFYICONDATA nid;
-#define MNU_EXIT 1000
-static HINSTANCE hInstMe;
-static UINT WM_TASKBARCREATED;
 static struct systray_local {
 	struct {
 		BIT_FIELD bLog : 1;
@@ -69346,7 +69351,6 @@ LRESULT APIENTRY IconMessageHandler( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM
 	}
 	return DefWindowProc( hWnd, uMsg, wParam, lParam );
 }
-#endif
 //----------------------------------------------------------------------
 static PTHREAD pMyThread;
 static int CPROC systrayidle( uintptr_t unused )
@@ -69365,9 +69369,8 @@ static int CPROC systrayidle( uintptr_t unused )
 	}
 	return -1;
 }
+#endif
 //----------------------------------------------------------------------
-CTEXTSTR icon;
-LOGICAL thread_ready;
 uintptr_t CPROC RegisterAndCreate( PTHREAD thread )
 {
 #ifndef __NO_WIN32API__
@@ -69550,6 +69553,7 @@ int RegisterIconEx( CTEXTSTR user_icon DBG_PASS )
 		return 0;
 	if( !hMainMenu )
 		BasicExitMenu();
+#ifdef WIN32
 	nid.cbSize = sizeof( NOTIFYICONDATA );
 	nid.hWnd = ghWndIcon;
 	nid.uID = 0;
@@ -69653,6 +69657,7 @@ int RegisterIconEx( CTEXTSTR user_icon DBG_PASS )
 	status = Shell_NotifyIcon( NIM_ADD, &nid );
 	DeleteObject( hLastIcon );
 	hLastIcon = nid.hIcon;
+#endif
 	return status;
 }
 //----------------------------------------------------------------------
@@ -69663,6 +69668,7 @@ void ChangeIconEx( CTEXTSTR icon DBG_PASS )
 		RegisterIcon( icon );
 		return;
 	}
+#ifdef WIN32
 	nid.cbSize = sizeof( NOTIFYICONDATA );
 	nid.hWnd = ghWndIcon;
 	nid.uID = 0;
@@ -69708,10 +69714,12 @@ void ChangeIconEx( CTEXTSTR icon DBG_PASS )
 	Shell_NotifyIcon( NIM_MODIFY, &nid );
 	DeleteObject( hLastIcon );
 	hLastIcon = nid.hIcon;
+#endif
 }
 //----------------------------------------------------------------------
 void UnregisterIcon( void )
 {
+#ifdef WIN32
 	if( nid.cbSize )
 	{
 		nid.cbSize = sizeof( NOTIFYICONDATA );
@@ -69721,9 +69729,11 @@ void UnregisterIcon( void )
 		nid.uCallbackMessage = WM_USERICONMSG;
 		Shell_NotifyIcon( NIM_DELETE, &nid );
 	}
+#endif
 }
 void TerminateIcon( void )
 {
+#if WIN32
 	int attempt = 0;
 	HWND hWndOld;
 	TEXTCHAR iconwindow[256];
@@ -69752,8 +69762,9 @@ void TerminateIcon( void )
 			return;
 		}
 		TerminateProcess( hProc, 0xFEED );
-      CloseHandle( hProc );
+		CloseHandle( hProc );
 	}
+#endif
 }
 ATEXIT( DoUnregisterIcon )
 {

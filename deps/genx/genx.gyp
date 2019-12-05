@@ -14,7 +14,7 @@
           'type': 'static_library',
           'sources': [
           
-                    'genx.c', 'charprops.c'
+                    'genx.c', 'charProps.c'
 
           ],
           'include_dirs': [

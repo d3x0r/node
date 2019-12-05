@@ -33,7 +33,7 @@
 #if defined( INTERSHELL_CORE_BUILD ) || defined( KEYPAD_SOURCE )
 #include "keypad.h"
 #else
-#include "InterShell/widgets/keypad.h"
+#include "keypad.h"
 #endif
 
 #ifdef __cplusplus

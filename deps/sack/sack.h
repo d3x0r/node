@@ -137,7 +137,6 @@
 #    include <shlobj.h>
 #  endif
 #  if _MSC_VER > 1500
-#    define mkdir _mkdir
 #    define fileno _fileno
 #    define stricmp _stricmp
 #    define strdup _strdup
@@ -11124,6 +11123,7 @@ FILESYS_PROC uint64_t FILESYS_API ConvertFileTimeToInt( const FILETIME *filetime
 #endif
 //# endif
 #ifndef __LINUX__
+// legacy 3.1 support.  Please use a FILE* instead.
 FILESYS_PROC  HANDLE FILESYS_API  sack_open ( INDEX group, CTEXTSTR filename, int opts, ... );
 FILESYS_PROC  LOGICAL FILESYS_API  sack_set_eof ( HANDLE file_handle );
 FILESYS_PROC  long  FILESYS_API   sack_tell( INDEX file_handle );
@@ -11150,11 +11150,30 @@ FILESYS_PROC void FILESYS_API sack_filesys_enable_thread_mounts( void );
 /* internal (c library) file system is registered as prority 1000.... lower priorities are checked first for things like
   ScanFiles(), fopen( ..., "r" ), ... exists(), */
 FILESYS_PROC struct file_system_mounted_interface * FILESYS_API sack_mount_filesystem( const char *name, struct file_system_interface *, int priority, uintptr_t psvInstance, LOGICAL writable );
+/*
+  Mount filesystem again, using an existing mount as a reference.
+  name is not required (NULL)
+  priority, if 0, will use the priority of the existing mount.
+  writeable will apply for writes through this mount.  If the previous mount
+  is writable and writable != 0, the new mount can be written, if either
+  is 0, this mount will not be writable.  (cannnot remount-write)
+*/
+FILESYS_PROC struct file_system_mounted_interface* FILESYS_API sack_remount_filesystem( const char* name, struct file_system_mounted_interface* oldMount, int priority, LOGICAL writable );
+/*
+  Remove a mount from chain of mounts.
+*/
 FILESYS_PROC void FILESYS_API sack_unmount_filesystem( struct file_system_mounted_interface *mount );
-// get a mounted filesystem by name
+/*
+   get a mounted filesystem by name.
+*/
 FILESYS_PROC struct file_system_mounted_interface * FILESYS_API sack_get_mounted_filesystem( const char *name );
-// returrn inteface used on the mounted filesystem.
+/*
+   returrn inteface used on the mounted filesystem.
+*/
 FILESYS_PROC struct file_system_interface * FILESYS_API sack_get_mounted_filesystem_interface( struct file_system_mounted_interface * );
+/*
+   Some file system interfaces might use this(?), This is probably already deprecated.
+*/
 FILESYS_PROC uintptr_t FILESYS_API sack_get_mounted_filesystem_instance( struct file_system_mounted_interface *mount );
 /* sometimes you want scanfiles to only scan external files...
   so this is how to get that mount */
@@ -11171,6 +11190,10 @@ FILESYS_PROC  FILE* FILESYS_API  sack_fsopenEx ( INDEX group, CTEXTSTR filename,
 FILESYS_PROC  FILE* FILESYS_API  sack_fsopen ( INDEX group, CTEXTSTR filename, CTEXTSTR opts, int share_mode );
 FILESYS_PROC  struct file_system_interface * FILESYS_API sack_get_filesystem_interface( CTEXTSTR name );
 FILESYS_PROC  void FILESYS_API sack_set_default_filesystem_interface( struct file_system_interface *fsi );
+/*
+ register a name for a file system interface object.
+ This interface provides all the callbacks used to access file and directory objects
+ */
 FILESYS_PROC  void FILESYS_API sack_register_filesystem_interface( CTEXTSTR name, struct file_system_interface *fsi );
 FILESYS_PROC  int FILESYS_API  sack_fclose ( FILE *file_file );
 FILESYS_PROC  size_t FILESYS_API  sack_fseekEx ( FILE *file_file, size_t pos, int whence, struct file_system_mounted_interface *mount );
@@ -13670,10 +13693,10 @@ namespace objStore {
 // if the volume does exist, a quick validity check is made on it, and then the result is opened
 // returns NULL if failure.  (permission denied to the file, or invalid filename passed, could be out of space... )
 // same as load_cyrypt_volume with userkey and devkey NULL.
-SACK_VFS_PROC struct sack_vfs_os_volume * CPROC sack_vfs_os_load_volume( CTEXTSTR filepath );
+SACK_VFS_PROC struct sack_vfs_os_volume * CPROC sack_vfs_os_load_volume( CTEXTSTR filepath, struct file_system_mounted_interface* mount );
 /*
     polish volume cleans up some of the dirty sectors.  It starts a background thread that
-	waits a short time of no dirty updates.
+	waits a short time of no dirty updates. (flush, but polish <-> dirty )
  */
 SACK_VFS_PROC void CPROC sack_vfs_os_polish_volume( struct sack_vfs_os_volume* vol );
 // open a volume at the specified pathname.  Use the specified keys to encrypt it.
@@ -13681,7 +13704,7 @@ SACK_VFS_PROC void CPROC sack_vfs_os_polish_volume( struct sack_vfs_os_volume* v
 // if the volume does exist, a quick validity check is made on it, and then the result is opened
 // returns NULL if failure.  (permission denied to the file, or invalid filename passed, could be out of space... )
 // if the keys are NULL same as load_volume.
-SACK_VFS_PROC struct sack_vfs_os_volume * CPROC sack_vfs_os_load_crypt_volume( CTEXTSTR filepath, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey );
+SACK_VFS_PROC struct sack_vfs_os_volume * CPROC sack_vfs_os_load_crypt_volume( CTEXTSTR filepath, uintptr_t version, CTEXTSTR userkey, CTEXTSTR devkey, struct file_system_mounted_interface* mount );
 // pass some memory and a memory length of the memory to use as a volume.
 // if userkey and/or devkey are not NULL the memory is assume to be encrypted with those keys.
 // the space is opened as readonly; write accesses/expanding operations will fail.
@@ -13782,8 +13805,8 @@ SACK_VFS_PROC size_t CPROC sack_vfs_os_find_get_size( struct sack_vfs_os_find_in
 #if defined USE_VFS_OS_INTERFACE
 #define sack_vfs_volume sack_vfs_os_volume
 #define sack_vfs_file sack_vfs_os_file
-#define sack_vfs_load_volume  sack_vfs_os_load_volume
-#define sack_vfs_load_crypt_volume  sack_vfs_os_load_crypt_volume
+#define sack_vfs_load_volume(a)  sack_vfs_os_load_volume(a,NULL)
+#define sack_vfs_load_crypt_volume(a,b,c,d)  sack_vfs_os_load_crypt_volume(a,b,c,d,NULL)
 #define sack_vfs_use_crypt_volume  sack_vfs_os_use_crypt_volume
 #define sack_vfs_unload_volume  sack_vfs_os_unload_volume
 #define sack_vfs_shrink_volume  sack_vfs_os_shrink_volume

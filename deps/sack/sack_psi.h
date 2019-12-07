@@ -149,7 +149,6 @@
 #    include <shlobj.h>
 #  endif
 #  if _MSC_VER > 1500
-#    define mkdir _mkdir
 #    define fileno _fileno
 #    define stricmp _stricmp
 #    define strdup _strdup

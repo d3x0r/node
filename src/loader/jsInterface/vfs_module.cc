@@ -154,6 +154,27 @@ static void loadComplete( const v8::FunctionCallbackInfo<Value>& args ) {
 #endif
 }
 
+static void volumeRemount( const v8::FunctionCallbackInfo<Value>& args ) {
+	VolumeObject *vol = VolumeObject::Unwrap<VolumeObject>( args.This() );
+   Isolate *isolate = args.GetIsolate();
+	Local<Context> context = isolate->GetCurrentContext();
+	if( !vol )
+		return;
+	int argc = args.Length();
+	if( argc > 0 ) {
+		String::Utf8Value s( isolate, args[0]->ToString( isolate->GetCurrentContext() ).ToLocalChecked() );
+		if( argc > 1 ) {
+			int num1 = (int)args[1]->ToNumber( context ).FromMaybe( Local<Number>() )->Value();
+			sack_remount_filesystem( *s, vol->fsMount, num1, TRUE );
+
+		} else {
+			sack_remount_filesystem( *s, vol->fsMount, 0, TRUE );
+		}
+	} else {
+		sack_remount_filesystem( NULL, vol->fsMount, 0, TRUE );
+	}
+}
+
 static void dumpMem( const v8::FunctionCallbackInfo<Value>& args ) {
 	DebugDumpMem( );
 }
@@ -167,14 +188,13 @@ static void CleanupThreadResources( void* arg_ ) {
 	//lprintf( "Which things belonged to this thread?, is it isolate?" );
 	// objects are weak referenced where appropriate anyway so things should cleanup
 	// already without additional help.
-
 }
 #endif
 
 static void logString( const v8::FunctionCallbackInfo<Value>& args ) {
 	Isolate* isolate = args.GetIsolate();
 	String::Utf8Value s( isolate, args[0]->ToString( isolate->GetCurrentContext() ).ToLocalChecked() );
-	lprintf( "%s", *s );
+	_xlprintf(LOG_NOISE, "JS", 1 )( "%s", *s );
 }
 
 void VolumeObject::doInit( Local<Context> context, Local<Object> exports )
@@ -201,7 +221,7 @@ void VolumeObject::doInit( Local<Context> context, Local<Object> exports )
 	{
 		PTEXT textOutput ;
 		textOutput = TextParse( SegCreateFromText( "GET /url/url.nme.text.xxx" ), NULL, NULL, 1, 1, NULL, 0 );
-		 GetFieldsInSQLEx( "create table groupBytes (user_id char, \tgroup_id char(20), \tsent int,\tsent_to int,\treceived int, \tindex userBytes(user_id), \tlogged_from DATETIME, \tlogged DATETIME DEFAULT CURRENT_TIMESTAMP,   )", FALSE DBG_SRC );
+		GetFieldsInSQLEx( "create table groupBytes (user_id char, \tgroup_id char(20), \tsent int,\tsent_to int,\treceived int, \tindex userBytes(user_id), \tlogged_from DATETIME, \tlogged DATETIME DEFAULT CURRENT_TIMESTAMP,   )", FALSE DBG_SRC );
 	}
 	*/
 	Local<FunctionTemplate> volumeTemplate;
@@ -266,6 +286,7 @@ void VolumeObject::doInit( Local<Context> context, Local<Object> exports )
 	NODE_SET_PROTOTYPE_METHOD( volumeTemplate, "decrypt", volDecrypt );
 	NODE_SET_PROTOTYPE_METHOD( volumeTemplate, "mv", renameFile );
 	NODE_SET_PROTOTYPE_METHOD( volumeTemplate, "rename", renameFile );
+	NODE_SET_PROTOTYPE_METHOD( volumeTemplate, "mount", volumeRemount );
 
 	Local<Function> VolFunc = volumeTemplate->GetFunction(isolate->GetCurrentContext()).ToLocalChecked();
 
@@ -307,13 +328,14 @@ void VolumeObject::Init( Local<Context> context, Local<Object> exports )  {
 	doInit( context, exports );
 }
 
-VolumeObject::VolumeObject( const char *mount, const char *filename, uintptr_t version, const char *key, const char *key2 )  {
+VolumeObject::VolumeObject( const char *mount, const char *filename, uintptr_t version, const char *key, const char *key2, int priority )  {
 	mountName = (char *)mount;
+	this->priority = priority;
 	if( !mount && !filename ) {
 		volNative = false;
-		fsInt = sack_get_filesystem_interface( "native" );
 		//lprintf( "open native mount" );
 		fsMount = sack_get_default_mount();
+		fsInt = sack_get_mounted_filesystem_interface( fsMount );
 	} else if( mount && !filename ) {
 		volNative = false;
 		fsMount = sack_get_mounted_filesystem( mount );
@@ -328,7 +350,7 @@ VolumeObject::VolumeObject( const char *mount, const char *filename, uintptr_t v
 		//lprintf( "VOL: %p for %s %d %p %p", vol, filename, version, key, key2 );
 		if( vol )
 			fsMount = sack_mount_filesystem( mount, fsInt = sack_get_filesystem_interface( SACK_VFS_FILESYSTEM_NAME )
-					, 2000, (uintptr_t)vol, TRUE );
+					, priority, (uintptr_t)vol, TRUE );
 		else
 			fsMount = NULL;
 	}
@@ -356,63 +378,12 @@ void VolumeObject::vfsObjectStorage( const v8::FunctionCallbackInfo<Value>& args
 	Isolate* isolate = args.GetIsolate();
 	VolumeObject *vol = ObjectWrap::Unwrap<VolumeObject>( args.This() );
 
-	char *mount_name;
-	char *filename = (char*)"default.os";
-	LOGICAL defaultFilename = TRUE;
-	char *key = NULL;
-	char *key2 = NULL;
-	int argc = args.Length();
+	class constructorSet* c = getConstructors( isolate );
+	Local<Function> cons = Local<Function>::New( isolate, c->ObjectStorageObject_constructor );
+	Local<Value> argv[] = { args.This(), args[0], args[1], args[2], args[3] };
+	MaybeLocal<Object> mo = cons->NewInstance( isolate->GetCurrentContext(), args.Length()+1, argv );
 
-	int arg = 0;
-	if( args[0]->IsString() ) {
-
-		//TooObject( isolate.GetCurrentContext().FromMaybe( Local<Object>() )
-		String::Utf8Value fName( USE_ISOLATE( isolate ) args[arg++]->ToString( isolate->GetCurrentContext() ).ToLocalChecked() );
-		mount_name = StrDup( *fName );
-	}
-	else {
-		mount_name = SRG_ID_Generator();
-	}
-	if( argc > 1 ) {
-		if( args[arg]->IsString() ) {
-			String::Utf8Value fName( USE_ISOLATE( isolate ) args[arg++]->ToString( isolate->GetCurrentContext() ).ToLocalChecked() );
-			defaultFilename = FALSE;
-			filename = StrDup( *fName );
-		}
-		else
-			filename = NULL;
-	}
-	else {
-		defaultFilename = FALSE;
-		filename = mount_name;
-		mount_name = SRG_ID_Generator();
-	}
-	//if( args[argc
-	if( args[arg]->IsNumber() ) {
-		//version = (uintptr_t)args[arg++]->ToNumber( isolate->GetCurrentContext() ).ToLocalChecked()->Value();
-		arg++;
-	}
-	if( argc > arg ) {
-		if( !args[arg]->IsNull() && !args[arg]->IsUndefined() ) {
-			String::Utf8Value k( USE_ISOLATE( isolate ) args[arg] );
-			key = StrDup( *k );
-		}
-		arg++;
-	}
-	if( argc > arg ) {
-		if( !args[arg]->IsNull() && !args[arg]->IsUndefined() ) {
-			String::Utf8Value k( USE_ISOLATE( isolate ) args[arg] );
-			key2 = StrDup( *k );
-		}
-		arg++;
-	}
-
-
-	class ObjectStorageObject *oso = openInVFS( isolate, mount_name, filename, key, key2 );
-	if( oso ) {
-		// uhmm this needs 'this' to know what to return as...
-	}
-
+	args.GetReturnValue().Set( mo.ToLocalChecked() );
 }
 
 
@@ -1164,9 +1135,10 @@ void releaseBuffer( const WeakCallbackInfo<ARRAY_BUFFER_HOLDER> &info ) {
 			char *key = NULL;
 			char *key2 = NULL;
 			uintptr_t version = 0;
+			uint32_t priority = 0;
 			int argc = args.Length();
 			if( argc == 0 ) {
-				VolumeObject* obj = new VolumeObject( NULL, NULL, 0, NULL, NULL );
+				VolumeObject* obj = new VolumeObject( NULL, NULL, 0, NULL, NULL, 0 );
 				obj->Wrap( args.This() );
 				args.GetReturnValue().Set( args.This() );
 			}
@@ -1200,6 +1172,10 @@ void releaseBuffer( const WeakCallbackInfo<ARRAY_BUFFER_HOLDER> &info ) {
 				if( args[arg]->IsNumber() ) {
 					version = (uintptr_t)args[arg++]->ToNumber(context).ToLocalChecked()->Value();
 				}
+				if( args[arg]->IsNumber() ) {
+					priority = (uint32_t)args[arg++]->ToNumber( context ).ToLocalChecked()->Value();
+				}
+
 				if( argc > arg ) {
 					String::Utf8Value k( USE_ISOLATE( isolate ) args[arg] );
 					if( !args[arg]->IsNull() && !args[arg]->IsUndefined() )
@@ -1213,7 +1189,7 @@ void releaseBuffer( const WeakCallbackInfo<ARRAY_BUFFER_HOLDER> &info ) {
 					arg++;
 				}
 				// Invoked as constructor: `new MyObject(...)`
-				VolumeObject* obj = new VolumeObject( mount_name, filename, version, key, key2 );
+				VolumeObject* obj = new VolumeObject( mount_name, filename, version, key, key2, priority );
 				if( !obj->vol ) {
 					isolate->ThrowException( Exception::Error(
 						String::NewFromUtf8( isolate, TranslateText( "Volume failed to open." ), v8::NewStringType::kNormal ).ToLocalChecked() ) );

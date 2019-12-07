@@ -229,6 +229,7 @@ public:
 	bool volNative;
 	char *mountName;
 	char *fileName;
+	int priority;
 	struct file_system_interface *fsInt;
 	struct file_system_mounted_interface* fsMount;
 
@@ -237,7 +238,7 @@ public:
 	static void doInit( Local<Context> context, Local<Object> exports );
 	static void Init( Local<Context> context, Local<Object> exports );
 	static void Init( Local<Object> exports, Local<Value> val, void* p );
-	VolumeObject( const char *mount, const char *filename, uintptr_t version, const char *key, const char *key2 );
+	VolumeObject( const char *mount, const char *filename, uintptr_t version, const char *key, const char *key2, int priority = 2000 );
 
 	static void vfsObjectStorage( const v8::FunctionCallbackInfo<Value>& args );
 	static void New( const v8::FunctionCallbackInfo<Value>& args );
@@ -468,6 +469,8 @@ void createSqlObject( const char *name, Local<Object> into );
 Local<Value> newSqlObject( Isolate *isolate, int argc, Local<Value> *argv );
 
 class ObjectStorageObject*  openInVFS( Isolate *isolate, const char *mount, const char *name, const char *key1, const char *key2 );
+Local<Object> WrapObjectStorage( Isolate* isolate, class ObjectStorageObject* oso );
+
 
 #ifndef VFS_MAIN_SOURCE
 extern

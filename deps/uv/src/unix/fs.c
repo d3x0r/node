@@ -46,6 +46,7 @@
 #include <poll.h>
 
 #include <sack.h>
+//#define DEBUG_SACK_FS_PATCH
 
 #if defined(__DragonFly__)        ||                                      \
     defined(__FreeBSD__)          ||                                      \
@@ -213,11 +214,15 @@ static void removeFd( int fd ) {
 static int uv__fs_close(int fd) {
   int rc;
   FILE *file;
-  getInternalFD( fd, &fd, file );
+  int outfd;
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "uv__fs_close:%d", fd  );
+#endif
+  getInternalFD( fd, &outfd, &file );
   if( file ) {
     removeFd( fd );
     sack_fclose( file );
-    return;
+    return 0;
   }
 
   rc = uv__close_nocancel(fd);
@@ -229,7 +234,7 @@ static int uv__fs_close(int fd) {
 }
 
 
-static ssize_t uv__fs_fsync(uv_fs_t* req) {
+static ssize_t uv__fs_fsync(uv_fs_t* req)     {
 #if defined(__APPLE__)
   /* Apple's fdatasync and fsync explicitly do NOT flush the drive write cache
    * to the drive platters. This is in contrast to Linux's fdatasync and fsync
@@ -249,9 +254,10 @@ static ssize_t uv__fs_fsync(uv_fs_t* req) {
   return r;
 #else
   FILE *file;
-  getInternalFD( req->file, &fd, file );
+  int fd;
+  getInternalFD( req->file, &fd, &file );
   if( file ) {
-    return; // noop for us...
+    return 0; // noop for us...
   }
   return fsync(req->file);
 #endif
@@ -259,23 +265,27 @@ static ssize_t uv__fs_fsync(uv_fs_t* req) {
 
 
 static ssize_t uv__fs_fdatasync(uv_fs_t* req) {
+  FILE *file;
+  int fd;
+  getInternalFD( req->file, &fd, &file );
+  if( file ) {
+    return; // noop for us...
+  }
 #if defined(__linux__) || defined(__sun) || defined(__NetBSD__)
   return fdatasync(req->file);
 #elif defined(__APPLE__)
   /* See the comment in uv__fs_fsync. */
   return uv__fs_fsync(req);
 #else
-  FILE *file;
-  getInternalFD( req->file, &fd, file );
-  if( file ) {
-    return; // noop for us...
-  }
   return fsync(req->file);
 #endif
 }
 
 
 static ssize_t uv__fs_futime(uv_fs_t* req) {
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "fs_futtime..." );
+#endif
 #if defined(__linux__)                                                        \
     || defined(_AIX71)                                                        \
     || defined(__HAIKU__)
@@ -344,19 +354,22 @@ static ssize_t uv__fs_open(uv_fs_t* req) {
     }
 
     if( req->flags & O_CREAT ) {
-       openfiles[nf++] = 'w';
+       openflags[nf++] = 'w';
     }
     else
-       openfiles[nf++] = 'r';
+       openflags[nf++] = 'r';
 
     if( !(req->flags & O_TRUNC) ) {
-       openfiles[nf++] = '+';
+       openflags[nf++] = '+';
     }
-    openfiles[nf++] = 0;
-    f = sack_fopen( 0, req->path, openfiles );
-
-    SET_REQ_RESULT( req, setInternalFD( -1, f ) );
-    return;
+    openflags[nf++] = 0;
+    f = sack_fopen( 0, req->path, openflags );
+#ifdef DEBUG_SACK_FS_PATCH
+    lprintf( "uv__fs_open:%s %s %p", req->path, openflags, f  );
+#endif    
+    if( f )
+      return setInternalFD( -1, f );
+    return -1;
   }
 
 
@@ -444,22 +457,22 @@ static ssize_t uv__fs_read(uv_fs_t* req) {
 #endif
   unsigned int iovmax;
   ssize_t result;
-
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "%s:", __func__ );
+#endif  
   FILE *file;
   int fd;
   getInternalFD( req->file, &fd, &file );
   if( file ) {
-     index = 0;
-     bytes = 0;
-     result = 0;
-     do {
-        DWORD incremental_bytes;
-        incremental_bytes = sack_fread( req->fs.info.bufs[index].base, 1, req->fs.info.bufs[index].len, file );
-        bytes += incremental_bytes;
-        ++index;
-     } while( index < req->fs.info.nbufs );
-    SET_REQ_RESULT(req, bytes);
-    return;
+    int index = 0;
+    size_t bytes = 0;
+    do {
+      size_t incremental_bytes;
+      incremental_bytes = sack_fread( req->bufs[index].base, 1, req->bufs[index].len, file );
+      bytes += incremental_bytes;
+      ++index;
+    } while( index < req->nbufs );
+    return bytes;
   }
 
 
@@ -546,7 +559,9 @@ static int uv__fs_scandir_sort(UV_CONST_DIRENT** a, UV_CONST_DIRENT** b) {
 static ssize_t uv__fs_scandir(uv_fs_t* req) {
   uv__dirent_t** dents;
   int n;
-
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "%s:", __func__ );
+#endif
   dents = NULL;
   n = scandir(req->path, &dents, uv__fs_scandir_filter, uv__fs_scandir_sort);
 
@@ -570,7 +585,9 @@ static ssize_t uv__fs_scandir(uv_fs_t* req) {
 
 static int uv__fs_opendir(uv_fs_t* req) {
   uv_dir_t* dir;
-
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "%s:", __func__ );
+#endif
   dir = uv__malloc(sizeof(*dir));
   if (dir == NULL)
     goto error;
@@ -651,6 +668,28 @@ static int uv__fs_closedir(uv_fs_t* req) {
 
 static int uv__fs_statfs(uv_fs_t* req) {
   uv_statfs_t* stat_fs;
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "fs_statfs ");
+#endif
+  {
+    FILE *file;
+    int fd;
+    //getInternalFD( req->file, &fd, &file );
+    if( IsPath( req->path ) ){
+      stat_fs->f_type = S_IFDIR;
+      stat_fs->f_bsize = 0;
+    } else if( sack_exists( req->path )){
+      FILE *tmp = sack_fopen( 0, req->path, "rb" );
+      stat_fs->f_type = S_IFREG;
+      if( tmp ) {
+        stat_fs->f_bsize = sack_fsize( tmp );
+        sack_fclose( tmp );
+      }
+
+    }
+  }
+  return 0;
+
 #if defined(__sun) || defined(__MVS__) || defined(__NetBSD__) || defined(__HAIKU__)
   struct statvfs buf;
 
@@ -760,7 +799,9 @@ static ssize_t uv__fs_readlink(uv_fs_t* req) {
 
 static ssize_t uv__fs_realpath(uv_fs_t* req) {
   char* buf;
-
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "%s:", __func__ );
+#endif
 #if defined(_POSIX_VERSION) && _POSIX_VERSION >= 200809L
   buf = realpath(req->path, NULL);
   if (buf == NULL)
@@ -800,7 +841,9 @@ static ssize_t uv__fs_sendfile_emul(uv_fs_t* req) {
   int in_fd;
   int out_fd;
   char buf[8192];
-
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "%s:", __func__ );
+#endif
   len = req->bufsml[0].len;
   in_fd = req->flags;
   out_fd = req->file;
@@ -904,7 +947,9 @@ out:
 static ssize_t uv__fs_sendfile(uv_fs_t* req) {
   int in_fd;
   int out_fd;
-
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "%s:", __func__ );
+#endif
   in_fd = req->flags;
   out_fd = req->file;
 
@@ -1057,16 +1102,15 @@ static ssize_t uv__fs_write(uv_fs_t* req) {
   int fd;
   getInternalFD( req->file, &fd, &file );
   if( file ) {
-    index = 0;
-    bytes = 0;
+    int index = 0;
+    size_t bytes = 0;
     do {
-      DWORD incremental_bytes;
-      incremental_bytes = sack_fwrite( req->fs.info.bufs[index].base, 1, req->fs.info.bufs[index].len, file );
+      size_t incremental_bytes;
+      incremental_bytes = sack_fwrite( req->bufs[index].base, 1, req->bufs[index].len, file );
       bytes += incremental_bytes;
       ++index;
-    } while( index < req->fs.info.nbufs );
-    SET_REQ_RESULT(req, bytes);
-    return;
+    } while( index < req->nbufs );
+    return bytes;
   }
 
 
@@ -1352,7 +1396,9 @@ static int uv__fs_statx(int fd,
   int flags;
   int mode;
   int rc;
-
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "... fs_statx stuff");
+#endif
   if (no_statx)
     return UV_ENOSYS;
 
@@ -1412,7 +1458,9 @@ static int uv__fs_statx(int fd,
 static int uv__fs_stat(const char *path, uv_stat_t *buf) {
   struct stat pbuf;
   int ret;
-
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "stat on path?%s", path );
+#endif
   ret = uv__fs_statx(-1, path, /* is_fstat */ 0, /* is_lstat */ 0, buf);
   if (ret != UV_ENOSYS)
     return ret;
@@ -1428,7 +1476,9 @@ static int uv__fs_stat(const char *path, uv_stat_t *buf) {
 static int uv__fs_lstat(const char *path, uv_stat_t *buf) {
   struct stat pbuf;
   int ret;
-
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "lstat on path?%s", path );
+#endif
   ret = uv__fs_statx(-1, path, /* is_fstat */ 0, /* is_lstat */ 1, buf);
   if (ret != UV_ENOSYS)
     return ret;
@@ -1444,6 +1494,18 @@ static int uv__fs_lstat(const char *path, uv_stat_t *buf) {
 static int uv__fs_fstat(int fd, uv_stat_t *buf) {
   struct stat pbuf;
   int ret;
+  FILE *file;
+  int realFd;
+  getInternalFD( fd, &realFd, &file );
+#ifdef DEBUG_SACK_FS_PATCH
+  lprintf( "fstat on path?%d %d", fd, realFd );
+#endif  
+  {
+    memset( buf, 0, sizeof( *buf ) );
+    buf->st_mode = S_IFREG;
+    buf->st_size = sack_fsize( file );
+    return 0;
+  }
 
   ret = uv__fs_statx(fd, "", /* is_fstat */ 1, /* is_lstat */ 0, buf);
   if (ret != UV_ENOSYS)
@@ -1532,7 +1594,9 @@ static void uv__fs_work(struct uv__work* w) {
   case UV_FS_ ## type:                                                        \
     r = action;                                                               \
     break;
-
+#ifdef DEBUG_SACK_FS_PATCH
+    lprintf( "Dispatch: %d", req->fs_type );
+#endif    
     switch (req->fs_type) {
     X(ACCESS, access(req->path, req->flags));
     X(CHMOD, chmod(req->path, req->mode));
